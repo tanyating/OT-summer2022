@@ -1,0 +1,195 @@
+\documentclass[11pt]{article}
+
+ \renewcommand*\familydefault{\sfdefault}
+%%
+%% to get Arial font as the sans serif font, uncomment following line:
+%% \renewcommand{\sfdefault}{phv} % phv is the Arial font
+\usepackage[sort,nocompress]{cite}
+\usepackage[small,bf,up]{caption}
+\renewcommand{\captionfont}{\footnotesize}
+\usepackage[left=1in,right=1in,top=1in,bottom=1in]{geometry}
+\usepackage{graphics,epsfig,graphicx,float,subfigure,color}
+%\usepackage{algorithm,algorithmic}
+\usepackage{amsmath,amssymb,amsbsy,amsfonts,amsthm}
+\usepackage{url}
+\usepackage{boxedminipage}
+\usepackage[sf,bf,tiny]{titlesec}
+ \usepackage[plainpages=false, colorlinks=true,
+   citecolor=blue, filecolor=blue, linkcolor=blue,
+   urlcolor=blue]{hyperref}
+
+\usepackage{algorithmicx}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xspace}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{sidecap}
+\usepackage{caption}
+\usepackage[numbered,framed]{matlab-prettifier}
+\lstset{
+  style      = Matlab-editor,
+}
+
+\lstset{
+basicstyle=\small\ttfamily,
+numbers=left,
+numbersep=5pt,
+xleftmargin=20pt,
+frame=tb,
+framexleftmargin=20pt
+}
+
+\usepackage{float}
+
+
+\lstset{
+basicstyle=\small\ttfamily,
+numbers=left,
+numbersep=5pt,
+xleftmargin=20pt,
+frame=tb,
+framexleftmargin=20pt
+}
+
+\renewcommand*\thelstnumber{\arabic{lstnumber}:}
+
+\DeclareCaptionFormat{mylst}{\hrule#1#2#3}
+\captionsetup[lstlisting]{format=mylst,labelfont=bf,singlelinecheck=off,labelsep=space}
+
+\usepackage{matlab-prettifier}
+\newcommand{\todo}[1]{\textcolor{red}{#1}}
+% see documentation for titlesec package
+% \titleformat{\section}{\large \sffamily \bfseries}
+\titlelabel{\thetitle.\,\,\,}
+
+\renewcommand{\baselinestretch}{0.994}
+\newcommand{\bs}{\boldsymbol}
+\newcommand{\alert}[1]{\textcolor{red}{#1}}
+\newcommand{\abs}[1]{\left|#1\right|}
+
+\setlength{\emergencystretch}{20pt}
+\usepackage[utf8]{inputenc}
+
+
+\begin{document}
+
+\begin{center}
+\vspace*{-2cm}
+
+\end{center}
+\vspace*{.5cm}
+\begin{center}
+\large \textbf{%%
+Summer 2022: Optimal Transport}\\
+\large \textbf{%%
+Tanya Wang}\\
+\end{center}
+
+% ---------------------------------------------------------------
+\section{Abstract}
+Solve Optimal Transport, and add in extra degree of freedom (some transformations without cost). Eg. Match things with wrong size, orientation, and etc.
+
+\section{Notes}
+\subsection{Jun 14}
+Given two distributions $\rho$ with samples $x^i$ and $\mu$ with samples $y^j$ (assume $N$ samples), find a transport $T$ such that $T(\rho) = \rho_T = \mu$ which also minimizes the some cost $C(X,T) = \sum_{i=1}^N c(x^i, T(x^i)) = \sum_{i=1}^N c(x^i, T(z^i))$. (assume $T(x^i) = z^i$)
+
+\begin{enumerate}
+    \item {\bf [Push Forward condition]}
+    
+    To impose $\rho_T=\mu$, there's a weak formulation requiring that the expected values of any function $F$ should be the same calculated based on $\rho_T$ and $\mu$.
+    \begin{align*}
+        \mathbb{E}_{\rho_{T}} [F(\cdot)] = \mathbb{E}_{\mu} [F(\cdot)]\\
+        \int F(x) \rho_T(x) dx = \int F(y) \mu(y) dy
+    \end{align*}
+    Since the distributions are unknown, rather we are only given with samples drawn from the 2 populations, we can only enforce the sample mean to be equal, ie. $\frac{1}{N} \sum_i F(z^i) = \frac{1}{N} \sum_j F(y^j)$.
+    
+    \item {\bf [Minimization with constraint]}
+    
+    To minimize the cost while maintaining the push forward condition, this becomes an optimization problem with constraints and the {\bf Lagrange function} depending on $T$ and $F$ is 
+    \begin{align}
+        L = C(X,T) - (\mathbb{E}_{\rho_{T}} [F(\cdot)] - \mathbb{E}_{\mu} [F(\cdot)])
+    \end{align}
+    So now we have a minmax problem: $\min_T \max_F L$.
+    
+    \item {\bf [Test function $F$]}
+    
+    Assume $F$ belongs to a family of functions that do not oversolve depending on the samples/data. Specifically, we can pick a nice, fixed $F$
+    \begin{align}
+        F(y) = \rho_T(y) - \mu(y)
+    \end{align}
+    And plug it in, we get the new Lagrange function:
+    \begin{align*}
+        L = C(X,T) - \lambda \int (\rho_T - \mu)^2(y) dy
+    \end{align*}
+    where our minmax problem becomes $\min_T \max_\lambda L$ (can consider $\lambda$ as a regularization/penalty parameter, when $\lambda$ is large, $\rho_T(\cdot) = \mu(\cdot)$ has to be achieved.)
+    
+    \item {\bf [Minimization problem]}
+    
+    For some fixed, large $\lambda$, and given test function $F$, the problem becomes
+    \begin{align}
+    \label{eq3}
+        \min_T L 
+        = \min_T \left[C(X,T) - \lambda (\mathbb{E}_{\rho_{T}} [F(\cdot)] - \mathbb{E}_{\mu} [F(\cdot)]) \right]\\
+        = \min_T \left[C(X,T) - \lambda (\int F(x)\rho_T(x) dx - \int F(y)\mu(y) dy) \right]
+    \end{align}
+    And we can replace the expected values with samples means:
+    $$
+    \mathbb{E}_{\rho_{T}} [F(\cdot)] \approx \frac{1}{N} \sum_i F(T(x^i))
+    = \frac{1}{N} \sum_i F(z^i)
+    $$
+    $$
+    \mathbb{E}_{\mu} [F(\cdot)] \approx \frac{1}{N} \sum_j F(y^j)
+    $$
+    So the only thing remain unknown is how to compute $F(y) = \rho_T(y) - \mu(y)$, which turns into how to compute the densities $\rho_T(\cdot)$ and $\mu(\cdot)$.
+    
+    \item {\bf [Kernel Density Estimation (KDE)]}
+    
+    Given samples $y^j$ (or $z^i$), we want to know the expression of the probability density $\mu(y^j)$ (or $\rho_T(z^i)$). KDE uses a sum of kernel functions to estimate the density (non-parametric way).
+    \begin{align*}
+        \hat{\mu}_a(y) = \frac{1}{N} \sum_j \kappa_a(y,y^j)
+        = \frac{1}{aN} \sum_j \kappa(\frac{y-y_j}{a})
+    \end{align*}
+    where $a$ is bandwidth, and $\kappa$ is the kernel (eg. uniform, normal, etc.).
+    
+    Bandwidth selection:
+    \begin{enumerate}
+        \item (Deep)
+        
+        Use samples $y^j$ to write out the formula for $\hat{\mu}_a(y^j)$, and then do max (log)likelihood over the free parameter $a$. Note the original formula for $\hat{\mu}_a(y^j)$ would result in an optimizer $a=0$, so use instead $\hat{\mu}_a(y^j) = \frac{1}{N} \sum_{i\ne j} \kappa_a(y,y^i)$ to optimize over the sum of log likelihood.
+        
+        \item (Simple, common Rule of Thumb)
+        
+        Assume the target distribution $\mu$ is Gaussian (and the kernel basis functions are also Gaussian), then do max likelihood analytically over $a$. (ref: wikipedia)
+        \begin{align*}
+            a = (\frac{4\hat{\sigma}^5}{3N})^{\frac{1}{5}} \approx
+            1.06 \hat{\sigma} N^{-\frac{1}{5}}
+        \end{align*}
+        where $\hat{\sigma} = \min (\text{standard deviation}, \frac{IQR}{1.34})$.
+    \end{enumerate}
+    
+    \item {\bf [Gradient Descent]}
+    
+    With KDE, we now go back to solve the minimization problem (\ref{eq3}).
+    We see that the transport $T$ depends only on the transported samples $z^j$. So we can simply do a gradient descent in the direction of $-\nabla_{\mathbf{z}} L$ with some learning rate $\eta$, where $\mathbf{z} = \begin{pmatrix}
+    z^1 \\ \vdots \\ z^N
+    \end{pmatrix}$.
+    \begin{algorithm}[h]
+    \caption{Gradient Descent w.r.t $\mathbf{z}$}
+    \begin{algorithmic}
+    \For{$i = 1, \dots, N$}
+    \State $z^i \gets x^i$
+    \Comment{Start with the original data points}
+    \EndFor
+        
+    \While{not reaching max steps or cost still large}
+    \textcolor{blue}{\State $\mathbf{z} \gets \mathbf{z} - \eta \nabla_{\mathbf{z}} L$} \Comment{Gradient descent}
+    \EndWhile
+        
+    \end{algorithmic}
+    \end{algorithm}
+        
+    
+\end{enumerate}
+
+\end{document}
