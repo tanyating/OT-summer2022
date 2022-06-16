@@ -174,21 +174,75 @@ Given two distributions $\rho$ with samples $x^i$ and $\mu$ with samples $y^j$ (
     We see that the transport $T$ depends only on the transported samples $z^j$. So we can simply do a gradient descent in the direction of $-\nabla_{\mathbf{z}} L$ with some learning rate $\eta$, where $\mathbf{z} = \begin{pmatrix}
     z^1 \\ \vdots \\ z^N
     \end{pmatrix}$.
-    \begin{algorithm}[h]
-    \caption{Gradient Descent w.r.t $\mathbf{z}$}
-    \begin{algorithmic}
-    \For{$i = 1, \dots, N$}
-    \State $z^i \gets x^i$
-    \Comment{Start with the original data points}
-    \EndFor
+    
+        \begin{algorithm}[h]
+        \caption{Gradient Descent w.r.t $\mathbf{z}$}
+        \begin{algorithmic}
+        \For{$i = 1, \dots, N$}
+        \State $z^i \gets x^i$
+        \Comment{Start with the original data points}
+        \EndFor
+            
+        \While{not reaching max steps or cost still large}
+        \textcolor{blue}{\State $\mathbf{z} \gets \mathbf{z} - \eta \nabla_{\mathbf{z}} L$} \Comment{Gradient descent}
+        \EndWhile
+            
+        \end{algorithmic}
+        \end{algorithm}
+    
+    \item {\bf [Gaussian Kernel basis functions]}
+    
+    For KDE, use the default standard normal distribution as kernel, then the bandwidth becomes the standard deviation.
+    ie. $\kappa_a(y,y^j) = \frac{1}{a \sqrt{2\pi}} e^{-\frac{1}{2}(\frac{y-y^j}{a})^2}$. Now we split the Lagrange/loss function into 2 parts and take gradient wrt $\mathbf{z}$. (\textcolor{purple}{Note: we also assume in 1D?})
+    $$
+    L = C(X,T) - \lambda (\mathbb{E}_{\rho_{T}} [F(\cdot)] - \mathbb{E}_{\mu} [F(\cdot)])
+    $$
+    $$
+    = \textcolor{blue}{C(X,T)} \textcolor{red}{- \lambda (\frac{1}{N} \sum_i F(z^i) - \frac{1}{N} \sum_i F(y^i))}
+    $$
+    \begin{align}
+        = \textcolor{blue}{L_C} + \textcolor{red}{L_F}
+    \end{align}
+    
+    \begin{enumerate}
+        \item 
+        $$
+        \textcolor{blue}{L_C} = \int c(x,T(x)) \rho(x) dx
+        $$
+        $$
+        \approx \frac{1}{N} \sum_i c(x^i,T(x^i))
+        = \frac{1}{N} \sum_i c(x^i,z^i)
+        $$
+        where $c(x,y)$ is some cost function. Specifically, we can take the most common Euclidean distance: $c(x,y) = \frac{1}{2} \|x-y\|^2$.
+        $$
+        \textcolor{blue}{L_C} = \frac{1}{N} \sum_i \frac{1}{2}(x^i-z^i)^2
+        $$
+        \begin{align*}
+            \implies \frac{\partial \textcolor{blue}{L_C}}{\partial z^i}
+            = - \frac{1}{N}(x^i-z^i)
+        \end{align*}
         
-    \While{not reaching max steps or cost still large}
-    \textcolor{blue}{\State $\mathbf{z} \gets \mathbf{z} - \eta \nabla_{\mathbf{z}} L$} \Comment{Gradient descent}
-    \EndWhile
+        \item Plug in KDE into $\textcolor{red}{L_F}$ (assume $a$ as the bandwidth for $\hat{\rho_T}$ and $b$ as the bandwidth for $\hat{\mu}$.):
+        \begin{align*}
+        % \centering
+            \textcolor{red}{L_F} = - \lambda (\frac{1}{N} \sum_i F(z^i) - \frac{1}{N} \sum_i F(y^i)\\
+            = - \lambda [\frac{1}{N} \sum_i (\frac{1}{N} \sum_j \kappa_a(z^i,z^j) - \frac{1}{N} \sum_j \kappa_a(z^i,y^j))\\
+            - \frac{1}{N} \sum_i (\frac{1}{N} \sum_j \kappa_a(y^i,z^j) - \frac{1}{N} \sum_j \kappa_a(y^i,y^j))]\\
+            = - \frac{\lambda}{N^2} \left[\sum_i \sum_j \left( 
+            \kappa_a(z^i,z^j) - \kappa_b(z^i,y^j) - \kappa_a(y^i,z^j) + \kappa_b(y^i,y^j)
+            \right) \right]
+        \end{align*}
         
-    \end{algorithmic}
-    \end{algorithm}
+        \begin{align*}
+            \implies \frac{\partial \textcolor{red}{L_F}}{\partial z^i}
+            = - \frac{\lambda}{N^2} \sum_j \textbf{[}
+            \frac{2}{a^3\sqrt{2\pi}} (z^j-z^i) e^{-\frac{1}{2}(\frac{z^j-z^i}{a})^2} - \frac{1}{b^3\sqrt{2\pi}} (y^j-z^i) e^{-\frac{1}{2}(\frac{y^j-z^i}{b})^2} \\
+            - \frac{1}{a^3\sqrt{2\pi}} (y^j-z^i) e^{-\frac{1}{2}(\frac{y^j-z^i}{a})^2} \textbf{]}
+        \end{align*}
         
+    \end{enumerate}
+    
+    So to do gradient descent, we have $(-\nabla_{\mathbf{z}} L)_i =  -\frac{\partial L}{\partial z^i} = -  \frac{\partial \textcolor{blue}{L_C}}{\partial z^i} -  \frac{\partial \textcolor{red}{L_F}}{\partial z^i}$.
     
 \end{enumerate}
 
