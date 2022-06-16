@@ -160,12 +160,18 @@ Given two distributions $\rho$ with samples $x^i$ and $\mu$ with samples $y^j$ (
         
         \item (Simple, common Rule of Thumb)
         
-        Assume the target distribution $\mu$ is Gaussian (and the kernel basis functions are also Gaussian), then do max likelihood analytically over $a$. (ref: wikipedia)
+        Assume the target distribution $\mu$ is Gaussian (and the kernel basis functions are also Gaussian), then do max likelihood analytically over $a$. (ref: \href{https://en.wikipedia.org/wiki/Kernel_density_estimation}{wikipedia})
         \begin{align*}
             a = (\frac{4\hat{\sigma}^5}{3N})^{\frac{1}{5}} \approx
             1.06 \hat{\sigma} N^{-\frac{1}{5}}
         \end{align*}
         where $\hat{\sigma} = \min (\text{standard deviation}, \frac{IQR}{1.34})$.
+        
+        Another modification that will improve the model is to reduce the factor from 1.06 to 0.9. Then the final formula would be:
+        \begin{align*}
+            a = 0.9 \min (\hat{\sigma}, \frac{IQR}{1.34}) N^{-\frac{1}{5}}
+        \end{align*}
+        where $\hat{\sigma}$ now becomes the standard deviation of the samples.
     \end{enumerate}
     
     \item {\bf [Gradient Descent]}
