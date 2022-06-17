@@ -92,7 +92,7 @@ Solve Optimal Transport, and add in extra degree of freedom (some transformation
 
 \section{Notes}
 \subsection{Jun 14}
-Given two distributions $\rho$ with samples $x^i$ and $\mu$ with samples $y^j$ (assume $N$ samples), find a transport $T$ such that $T(\rho) = \rho_T = \mu$ which also minimizes the some cost $C(X,T) = \sum_{i=1}^N c(x^i, T(x^i)) = \sum_{i=1}^N c(x^i, T(z^i))$. (assume $T(x^i) = z^i$)
+Given two distributions $\rho$ with $N$ samples $x^i$ and $\mu$ with $M$ samples $y^j$, find a transport $T$ such that $T(\rho) = \rho_T = \mu$ which also minimizes the some cost $C(X,T) = \sum_{i=1}^N c(x^i, T(x^i)) = \sum_{i=1}^N c(x^i, z^i)$. (assume $T(x^i) = z^i$)
 
 \begin{enumerate}
     \item {\bf [Push Forward condition]}
@@ -102,7 +102,7 @@ Given two distributions $\rho$ with samples $x^i$ and $\mu$ with samples $y^j$ (
         \mathbb{E}_{\rho_{T}} [F(\cdot)] = \mathbb{E}_{\mu} [F(\cdot)]\\
         \int F(x) \rho_T(x) dx = \int F(y) \mu(y) dy
     \end{align*}
-    Since the distributions are unknown, rather we are only given with samples drawn from the 2 populations, we can only enforce the sample mean to be equal, ie. $\frac{1}{N} \sum_i F(z^i) = \frac{1}{N} \sum_j F(y^j)$.
+    Since the distributions are unknown, rather we are only given with samples drawn from the 2 populations, we can only enforce the sample mean to be equal, ie. $\frac{1}{N} \sum_i F(z^i) = \frac{1}{M} \sum_j F(y^j)$.
     
     \item {\bf [Minimization with constraint]}
     
@@ -118,9 +118,9 @@ Given two distributions $\rho$ with samples $x^i$ and $\mu$ with samples $y^j$ (
     \begin{align}
         F(y) = \rho_T(y) - \mu(y)
     \end{align}
-    And plug it in, we get the new Lagrange function:
+    And plug it in, we get the new Lagrange function (assume $\lambda>0$):
     \begin{align*}
-        L = C(X,T) - \lambda \int (\rho_T - \mu)^2(y) dy
+        L = C(X,T) + \lambda \int (\rho_T - \mu)^2(y) dy
     \end{align*}
     where our minmax problem becomes $\min_T \max_\lambda L$ (can consider $\lambda$ as a regularization/penalty parameter, when $\lambda$ is large, $\rho_T(\cdot) = \mu(\cdot)$ has to be achieved.)
     
@@ -130,8 +130,8 @@ Given two distributions $\rho$ with samples $x^i$ and $\mu$ with samples $y^j$ (
     \begin{align}
     \label{eq3}
         \min_T L 
-        = \min_T \left[C(X,T) - \lambda (\mathbb{E}_{\rho_{T}} [F(\cdot)] - \mathbb{E}_{\mu} [F(\cdot)]) \right]\\
-        = \min_T \left[C(X,T) - \lambda (\int F(x)\rho_T(x) dx - \int F(y)\mu(y) dy) \right]
+        = \min_T \left[C(X,T) + \lambda (\mathbb{E}_{\rho_{T}} [F(\cdot)] - \mathbb{E}_{\mu} [F(\cdot)]) \right]\\
+        = \min_T \left[C(X,T) + \lambda (\int F(x)\rho_T(x) dx - \int F(y)\mu(y) dy) \right]
     \end{align}
     And we can replace the expected values with samples means:
     $$
@@ -139,7 +139,7 @@ Given two distributions $\rho$ with samples $x^i$ and $\mu$ with samples $y^j$ (
     = \frac{1}{N} \sum_i F(z^i)
     $$
     $$
-    \mathbb{E}_{\mu} [F(\cdot)] \approx \frac{1}{N} \sum_j F(y^j)
+    \mathbb{E}_{\mu} [F(\cdot)] \approx \frac{1}{M} \sum_j F(y^j)
     $$
     So the only thing remain unknown is how to compute $F(y) = \rho_T(y) - \mu(y)$, which turns into how to compute the densities $\rho_T(\cdot)$ and $\mu(\cdot)$.
     
@@ -147,29 +147,29 @@ Given two distributions $\rho$ with samples $x^i$ and $\mu$ with samples $y^j$ (
     
     Given samples $y^j$ (or $z^i$), we want to know the expression of the probability density $\mu(y^j)$ (or $\rho_T(z^i)$). KDE uses a sum of kernel functions to estimate the density (non-parametric way).
     \begin{align*}
-        \hat{\mu}_a(y) = \frac{1}{N} \sum_j \kappa_a(y,y^j)
-        = \frac{1}{aN} \sum_j \kappa(\frac{y-y_j}{a})
+        \hat{\mu}_a(y) = \frac{1}{M} \sum_j \kappa_a(y,y^j)
+        = \frac{1}{aM} \sum_j \kappa(\frac{y-y_j}{a})
     \end{align*}
-    where $a$ is bandwidth, and $\kappa$ is the kernel (eg. uniform, normal, etc.).
+    where $M$ is the number of samples (data), $a$ is bandwidth, and $\kappa$ is the kernel (eg. uniform, normal, etc.).
     
     Bandwidth selection:
     \begin{enumerate}
         \item (Deep)
         
-        Use samples $y^j$ to write out the formula for $\hat{\mu}_a(y^j)$, and then do max (log)likelihood over the free parameter $a$. Note the original formula for $\hat{\mu}_a(y^j)$ would result in an optimizer $a=0$, so use instead $\hat{\mu}_a(y^j) = \frac{1}{N} \sum_{i\ne j} \kappa_a(y,y^i)$ to optimize over the sum of log likelihood.
+        Use samples $y^j$ to write out the formula for $\hat{\mu}_a(y^j)$, and then do max (log)likelihood over the free parameter $a$. Note the original formula for $\hat{\mu}_a(y^j)$ would result in an optimizer $a=0$, so use instead $\hat{\mu}_a(y^j) = \frac{1}{M-1} \sum_{i\ne j} \kappa_a(y^j,y^i)$ to optimize over the sum of log likelihood.
         
         \item (Simple, common Rule of Thumb)
         
         Assume the target distribution $\mu$ is Gaussian (and the kernel basis functions are also Gaussian), then do max likelihood analytically over $a$. (ref: \href{https://en.wikipedia.org/wiki/Kernel_density_estimation}{wikipedia})
         \begin{align*}
-            a = (\frac{4\hat{\sigma}^5}{3N})^{\frac{1}{5}} \approx
-            1.06 \hat{\sigma} N^{-\frac{1}{5}}
+            a = (\frac{4\hat{\sigma}^5}{3M})^{\frac{1}{5}} \approx
+            1.06 \hat{\sigma} M^{-\frac{1}{5}}
         \end{align*}
         where $\hat{\sigma} = \min (\text{standard deviation}, \frac{IQR}{1.34})$.
         
         Another modification that will improve the model is to reduce the factor from 1.06 to 0.9. Then the final formula would be:
         \begin{align*}
-            a = 0.9 \min (\hat{\sigma}, \frac{IQR}{1.34}) N^{-\frac{1}{5}}
+            a = 0.9 \min (\hat{\sigma}, \frac{IQR}{1.34}) M^{-\frac{1}{5}}
         \end{align*}
         where $\hat{\sigma}$ now becomes the standard deviation of the samples.
     \end{enumerate}
@@ -201,10 +201,10 @@ Given two distributions $\rho$ with samples $x^i$ and $\mu$ with samples $y^j$ (
     For KDE, use the default standard normal distribution as kernel, then the bandwidth becomes the standard deviation.
     ie. $\kappa_a(y,y^j) = \frac{1}{a \sqrt{2\pi}} e^{-\frac{1}{2}(\frac{y-y^j}{a})^2}$. Now we split the Lagrange/loss function into 2 parts and take gradient wrt $\mathbf{z}$. (\textcolor{purple}{Note: we also assume in 1D?})
     $$
-    L = C(X,T) - \lambda (\mathbb{E}_{\rho_{T}} [F(\cdot)] - \mathbb{E}_{\mu} [F(\cdot)])
+    L = C(X,T) + \lambda (\mathbb{E}_{\rho_{T}} [F(\cdot)] - \mathbb{E}_{\mu} [F(\cdot)])
     $$
     $$
-    = \textcolor{blue}{C(X,T)} \textcolor{red}{- \lambda (\frac{1}{N} \sum_i F(z^i) - \frac{1}{N} \sum_i F(y^i))}
+    = \textcolor{blue}{C(X,T)} + \textcolor{red}{\lambda (\frac{1}{N} \sum_i F(z^i) - \frac{1}{N} \sum_i F(y^i))}
     $$
     \begin{align}
         = \textcolor{blue}{L_C} + \textcolor{red}{L_F}
@@ -231,22 +231,21 @@ Given two distributions $\rho$ with samples $x^i$ and $\mu$ with samples $y^j$ (
         \item Plug in KDE into $\textcolor{red}{L_F}$ (assume $a$ as the bandwidth for $\hat{\rho_T}$ and $b$ as the bandwidth for $\hat{\mu}$.):
         \begin{align*}
         % \centering
-            \textcolor{red}{L_F} = - \lambda (\frac{1}{N} \sum_i F(z^i) - \frac{1}{N} \sum_i F(y^i)\\
-            = - \lambda [\frac{1}{N} \sum_i (\frac{1}{N} \sum_j \kappa_a(z^i,z^j) - \frac{1}{N} \sum_j \kappa_a(z^i,y^j))\\
-            - \frac{1}{N} \sum_i (\frac{1}{N} \sum_j \kappa_a(y^i,z^j) - \frac{1}{N} \sum_j \kappa_a(y^i,y^j))]\\
-            = - \frac{\lambda}{N^2} \left[\sum_i \sum_j \left( 
-            \kappa_a(z^i,z^j) - \kappa_b(z^i,y^j) - \kappa_a(y^i,z^j) + \kappa_b(y^i,y^j)
+            \textcolor{red}{L_F} = \lambda (\frac{1}{N} \sum_i F(z^i) - \frac{1}{M} \sum_i F(y^i)\\
+            =  \lambda [\frac{1}{N} \sum_i (\frac{1}{N} \sum_j \kappa_a(z^i,z^j) - \frac{1}{M} \sum_j \kappa_a(z^i,y^j))\\
+            - \frac{1}{M} \sum_i (\frac{1}{N} \sum_j \kappa_a(y^i,z^j) - \frac{1}{M} \sum_j \kappa_a(y^i,y^j))]\\
+            = \lambda \left[\sum_i \sum_j \left( 
+            \frac{1}{N^2}\kappa_a(z^i,z^j) -  \frac{1}{MN}\kappa_b(z^i,y^j) -   \frac{1}{MN}\kappa_a(y^i,z^j) +  \frac{1}{M^2}\kappa_b(y^i,y^j)
             \right) \right]
         \end{align*}
         
         \begin{align*}
             \implies \frac{\partial \textcolor{red}{L_F}}{\partial z^i}
-            = - \frac{\lambda}{N^2} \sum_j \textbf{[}
-            \frac{2}{a^3\sqrt{2\pi}} (z^j-z^i) e^{-\frac{1}{2}(\frac{z^j-z^i}{a})^2} - \frac{1}{b^3\sqrt{2\pi}} (y^j-z^i) e^{-\frac{1}{2}(\frac{y^j-z^i}{b})^2} \\
-            - \frac{1}{a^3\sqrt{2\pi}} (y^j-z^i) e^{-\frac{1}{2}(\frac{y^j-z^i}{a})^2} \textbf{]}
+            = \lambda \sum_j \left[
+             \frac{1}{N^2}\frac{2}{a^3\sqrt{2\pi}} (z^j-z^i) e^{-\frac{1}{2}(\frac{z^j-z^i}{a})^2} -  \frac{1}{MN}\frac{1}{b^3\sqrt{2\pi}} (y^j-z^i) e^{-\frac{1}{2}(\frac{y^j-z^i}{b})^2} \right]
         \end{align*}
-        
-    \end{enumerate}
+        Note we don't take partial derivative of $z^i$ wrt the KDE using $z^i$ as the center of the kernel (ie. we don't consider $\frac{\partial \kappa_a(y^i,z^j)}{\partial z^i}$).
+        \end{enumerate}
     
     So to do gradient descent, we have $(-\nabla_{\mathbf{z}} L)_i =  -\frac{\partial L}{\partial z^i} = -  \frac{\partial \textcolor{blue}{L_C}}{\partial z^i} -  \frac{\partial \textcolor{red}{L_F}}{\partial z^i}$.
     
