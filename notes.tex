@@ -244,7 +244,7 @@ Given two distributions $\rho$ with $N$ samples $x^i$ and $\mu$ with $M$ samples
             = \lambda \sum_j \left[
              \frac{1}{N^2}\frac{2}{a^3\sqrt{2\pi}} (z^j-z^i) e^{-\frac{1}{2}(\frac{z^j-z^i}{a})^2} -  \frac{1}{MN}\frac{1}{b^3\sqrt{2\pi}} (y^j-z^i) e^{-\frac{1}{2}(\frac{y^j-z^i}{b})^2} \right]
         \end{align*}
-        Note we don't take partial derivative of $z^i$ wrt the KDE using $z^i$ as the center of the kernel (ie. we don't consider $\frac{\partial \kappa_a(y^i,z^j)}{\partial z^i}$).
+        Note we don't take partial derivative of $z^i$ wrt the KDE using $z^i$ as the center of the kernel (ie. we don't consider $\frac{\partial \kappa_a(y^j,z^i)}{\partial z^i}$ for any $j$).
         \end{enumerate}
     
     So to do gradient descent, we have $(-\nabla_{\mathbf{z}} L)_i =  -\frac{\partial L}{\partial z^i} = -  \frac{\partial \textcolor{blue}{L_C}}{\partial z^i} -  \frac{\partial \textcolor{red}{L_F}}{\partial z^i}$.
