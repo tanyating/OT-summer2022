@@ -157,6 +157,52 @@ Given two distributions $\rho$ with $N$ samples $x^i$ and $\mu$ with $M$ samples
         \item (Deep)
         
         Use samples $y^j$ to write out the formula for $\hat{\mu}_a(y^j)$, and then do max (log)likelihood over the free parameter $a$. Note the original formula for $\hat{\mu}_a(y^j)$ would result in an optimizer $a=0$, so use instead $\hat{\mu}_a(y^j) = \frac{1}{M-1} \sum_{i\ne j} \kappa_a(y^j,y^i)$ to optimize over the sum of log likelihood.
+        \begin{align}
+            \max_a \log \mathbf{P}(\mathbf{y}; a) = \max_a \log \left(
+            \prod_j \hat{\mu}(y^j;a)
+            \right)
+            = \max_a \sum_j \log\left(
+            \hat{\mu}(y^j;a)
+            \right)
+        \end{align}
+        To obtain the maximum, we can use the gradient ascent in the direction of $\nabla_a \log \mathbf{P}(\mathbf{y}; a) = \frac{\partial \log \mathbf{P}(\mathbf{y}; a)}{\partial a}$ with some learning rate (same algorithm as in \ref{algo1}). (assume default Gaussian kernel)
+        $$
+        \frac{\partial \hat{\mu}(y^j;a)}{\partial a}
+        = \frac{\partial}{\partial a} \left(\frac{1}{M-1} \sum_{i\ne j} \kappa_a(y^j,y^i)\right)
+        = \frac{\partial}{\partial a} \left(\frac{1}{M-1} \sum_{i\ne j} \frac{1}{a\sqrt{2\pi}} e^{-\frac{1}{2}(\frac{y^j-y^i}{a})^2}\right)
+        $$
+        $$
+        = \frac{1}{a^2\sqrt{2\pi}(M-1)} \sum_{i\ne j}
+        \left(-1 + (\frac{y^j-y^i}{a})^2\right) e^{-\frac{1}{2}(\frac{y^j-y^i}{a})^2}
+        $$
+        
+        $$
+        \implies \frac{\partial \log \mathbf{P}(\mathbf{y}; a)}{\partial a}
+        = \sum_j \frac{\partial \log \left(\hat{\mu}(y^j;a)\right)}{\partial a}
+        = \sum_j \frac{1}{\hat{\mu}(y^j;a)} \frac{\partial \hat{\mu}(y^j;a)}{\partial a}
+        $$
+        $$
+        = -\frac{M}{a} + \frac{1}{a^2\sqrt{2\pi}(M-1)} \sum_j \left[
+        \frac{1}{\hat{\mu}(y^j;a)} \sum_{i\ne j} \left(
+        (\frac{y^j-y^i}{a})^2 e^{-\frac{1}{2}(\frac{y^j-y^i}{a})^2}
+        \right)
+        \right]
+        $$
+        $$
+        = -\frac{M}{a} + \frac{1}{a^2\sqrt{2\pi}(M-1)} \sum_j \left[
+        \frac{1}{\frac{1}{M-1} \sum_{k\ne j} \frac{1}{a\sqrt{2\pi}} e^{-\frac{1}{2}(\frac{y^j-y^k}{a})^2}} \sum_{i\ne j} \left(
+        (\frac{y^j-y^i}{a})^2 e^{-\frac{1}{2}(\frac{y^j-y^i}{a})^2}
+        \right)
+        \right]
+        $$
+        $$
+        = -\frac{M}{a} + \frac{1}{a} \sum_j \left[
+        \frac{\sum_{i\ne j} \left(
+        (\frac{y^j-y^i}{a})^2 e^{-\frac{1}{2}(\frac{y^j-y^i}{a})^2}
+        \right)}
+        {\sum_{k\ne j} e^{-\frac{1}{2}(\frac{y^j-y^k}{a})^2}}
+        \right]
+        $$
         
         \item (Simple, common Rule of Thumb)
         
@@ -184,6 +230,7 @@ Given two distributions $\rho$ with $N$ samples $x^i$ and $\mu$ with $M$ samples
         \begin{algorithm}[h]
         \caption{Gradient Descent w.r.t $\mathbf{z}$}
         \begin{algorithmic}
+        \label{algo1}
         \For{$i = 1, \dots, N$}
         \State $z^i \gets x^i$
         \Comment{Start with the original data points}
@@ -242,12 +289,18 @@ Given two distributions $\rho$ with $N$ samples $x^i$ and $\mu$ with $M$ samples
         \begin{align*}
             \implies \frac{\partial \textcolor{red}{L_F}}{\partial z^i}
             = \lambda \sum_j \left[
-             \frac{1}{N^2}\frac{2}{a^3\sqrt{2\pi}} (z^j-z^i) e^{-\frac{1}{2}(\frac{z^j-z^i}{a})^2} -  \frac{1}{MN}\frac{1}{b^3\sqrt{2\pi}} (y^j-z^i) e^{-\frac{1}{2}(\frac{y^j-z^i}{b})^2} \right]
+             \frac{1}{N^2}\frac{1}{a^3\sqrt{2\pi}} (z^j-z^i) e^{-\frac{1}{2}(\frac{z^j-z^i}{a})^2} -  \frac{1}{MN}\frac{1}{b^3\sqrt{2\pi}} (y^j-z^i) e^{-\frac{1}{2}(\frac{y^j-z^i}{b})^2} \right]
         \end{align*}
-        Note we don't take partial derivative of $z^i$ wrt the KDE using $z^i$ as the center of the kernel (ie. we don't consider $\frac{\partial \kappa_a(y^j,z^i)}{\partial z^i}$ for any $j$).
+        Note we don't take partial derivative of $z^i$ wrt the KDE using $z^i$ as the center of the kernel (ie. we don't consider $\frac{\partial \kappa_a(y^j,z^i)}{\partial z^i}$ or $\frac{\partial \kappa_a(z^j,z^i)}{\partial z^i}$ for any $j$).
         \end{enumerate}
     
     So to do gradient descent, we have $(-\nabla_{\mathbf{z}} L)_i =  -\frac{\partial L}{\partial z^i} = -  \frac{\partial \textcolor{blue}{L_C}}{\partial z^i} -  \frac{\partial \textcolor{red}{L_F}}{\partial z^i}$.
+    
+    Side note for bandwidth in practice: When trying to find the bandwidth $a$ and $b$, it could be problematic if both of them are quite small. Since at the beginning with little/none transport, (transported) samples $\mathbf{z}$ (in fact $\mathbf{x}=\mathbf{z}$ for the initial guess) and the target samples $\mathbf{y}$ might be 2 separate blobs representing 2 distant distribution. Then the small bandwidths corresponding for the 2 local blobs would be fine for the 2 separate density estimate, but bad for the transport since the 2 local distribution estimates would not feel each other. So one possible solution is to use a common, larger bandwidth for the KDEs of $\rho_T$ and $\mu$ (joint rule of thumb), ie. 
+    \begin{align*}
+        a = b = 0.9 \min (\hat{\sigma}, \frac{IQR}{1.34}) (N+M)^{-\frac{1}{5}}
+    \end{align*}
+    where $\hat{\sigma}$ is the standard deviation of the $N+M$ samples of $z^i$ and $y^j$.
     
 \end{enumerate}
 
