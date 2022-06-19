@@ -204,6 +204,15 @@ Given two distributions $\rho$ with $N$ samples $x^i$ and $\mu$ with $M$ samples
         \right]
         $$
         
+        \textcolor{purple}{
+        Questions:
+        \begin{enumerate}
+            \item Need constraint for positive bandwidth (ie. $a>0$)?
+            \item How to pick learning rate $\eta$ here? (Tried with code, $\eta$ has to be very small)
+            \item What is the maximum number of steps (ie. when to stop with a satisfying $a$)?
+        \end{enumerate}
+        }
+        
         \item (Simple, common Rule of Thumb)
         
         Assume the target distribution $\mu$ is Gaussian (and the kernel basis functions are also Gaussian), then do max likelihood analytically over $a$. (ref: \href{https://en.wikipedia.org/wiki/Kernel_density_estimation}{wikipedia})
@@ -246,7 +255,7 @@ Given two distributions $\rho$ with $N$ samples $x^i$ and $\mu$ with $M$ samples
     \item {\bf [Gaussian Kernel basis functions]}
     
     For KDE, use the default standard normal distribution as kernel, then the bandwidth becomes the standard deviation.
-    ie. $\kappa_a(y,y^j) = \frac{1}{a \sqrt{2\pi}} e^{-\frac{1}{2}(\frac{y-y^j}{a})^2}$. Now we split the Lagrange/loss function into 2 parts and take gradient wrt $\mathbf{z}$. (\textcolor{purple}{Note: we also assume in 1D?})
+    ie. $\kappa_a(y,y^j) = \frac{1}{a \sqrt{2\pi}} e^{-\frac{1}{2}(\frac{y-y^j}{a})^2}$. Now we split the Lagrange/loss function into 2 parts and take gradient wrt $\mathbf{z}$. (\textcolor{purple}{Note: we also assume in 1D})
     $$
     L = C(X,T) + \lambda (\mathbb{E}_{\rho_{T}} [F(\cdot)] - \mathbb{E}_{\mu} [F(\cdot)])
     $$
