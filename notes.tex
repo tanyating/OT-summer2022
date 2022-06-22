@@ -213,6 +213,19 @@ Given two distributions $\rho$ with $N$ samples $x^i$ and $\mu$ with $M$ samples
         \end{enumerate}
         }
         
+                \textcolor{blue}{
+        Some answers:
+        \begin{enumerate}
+            \item No. However, if at any point, a large learning rate produces $a \le 0$, this has to be rejected and the learning rate decreased.
+            \item One possibility is to start with a small number $\eta$ and, at every step:
+            \begin{enumerate}
+                \item Increase it, say $\eta \rightarrow 2\eta$
+                \item Try a descent step. If the objective does not decrease (or if a becomes negative), reject the step and reduce $\eta$, say $\eta \rightarrow \frac{1}{2} \eta$, and so on until the objective function does decrease.
+            \end{enumerate}
+            \item One choice is to stop when the gradient of the objective function is smaller than a threshold $\epsilon$, another to set a maximum number of steps.
+        \end{enumerate}
+        }
+        
         \item (Simple, common Rule of Thumb)
         
         Assume the target distribution $\mu$ is Gaussian (and the kernel basis functions are also Gaussian), then do max likelihood analytically over $a$. (ref: \href{https://en.wikipedia.org/wiki/Kernel_density_estimation}{wikipedia})
@@ -245,8 +258,13 @@ Given two distributions $\rho$ with $N$ samples $x^i$ and $\mu$ with $M$ samples
         \Comment{Start with the original data points}
         \EndFor
             
-        \While{not reaching max steps or cost still large}
-        \textcolor{blue}{\State $\mathbf{z} \gets \mathbf{z} - \eta \nabla_{\mathbf{z}} L$} \Comment{Gradient descent}
+        \While{not reaching max steps or $\|\nabla_{\mathbf{z}} L\|>\epsilon$}
+        \State $\eta \gets 2\eta$ \Comment{Increase learning rate}
+        \textcolor{blue}{\State $\mathbf{z}_{\text{new}} \gets \mathbf{z} - \eta \nabla_{\mathbf{z}} L$} \Comment{Gradient descent}
+        \While{$L(\mathbf{z}_{\text{new}}) > L(\mathbf{z})$} \Comment{Find reasonable learning rate (when the objective does decrease)}
+        \State $\eta \gets \frac{\eta}{2}$ \Comment{Decrease learning rate}
+        \EndWhile
+        \State $\mathbf{z} \gets \mathbf{z}_{\text{new}}$
         \EndWhile
             
         \end{algorithmic}
@@ -310,6 +328,93 @@ Given two distributions $\rho$ with $N$ samples $x^i$ and $\mu$ with $M$ samples
         a = b = 0.9 \min (\hat{\sigma}, \frac{IQR}{1.34}) (N+M)^{-\frac{1}{5}}
     \end{align*}
     where $\hat{\sigma}$ is the standard deviation of the $N+M$ samples of $z^i$ and $y^j$.
+    
+\end{enumerate}
+
+\subsection{Jun 21}
+
+Now we look at a higher dimension / multivariate ($d>1$) optimal transport. ie, assume each sample ${x} ^i,{y}^j \in \mathbb{R}^d$.
+
+\begin{enumerate}
+    \item {\bf [Multivariate KDE]}
+    The density estimate is similar to 1D, we just assume the default kernel is \textcolor{blue}{isometric} multivariate Gaussian.
+    ie. $\kappa_A(\cdot,{y}^j) = N({y}^j,A^2)$, where $A^2 \in \mathbb{R}^{d\times d}$ is the diagonal covariance matrix. So we can instead store a vector ${a}$ such that ${a}_k = A_{kk}$ (we can view $a_k$ as the bandwidth for kth dimension).
+    And hence $\kappa_a(y,y^j) = \frac{1}{(\sqrt{2\pi})^d \prod_{k=1}^d a_k} e^{-\frac{1}{2}\sum_{k=1}^d (\frac{y_k-y^j_k}{a_k})^2}$. (So superscript denotes the index of the sample, while the subscript denotes dimension.)
+    \begin{align*}
+        \hat{\mu}_a(y) = \frac{1}{M} \sum_j \kappa_a(y,y^j)
+        = \frac{1}{M} \sum_j \frac{1}{(\sqrt{2\pi})^d \prod_{k=1}^d a_k} e^{-\frac{1}{2}\sum_{k=1}^d (\frac{y_k-y^j_k}{a_k})^2}
+    \end{align*}
+    Bandwidth selection:
+    \begin{enumerate}
+        \item (Deep)
+        Still, we want to pick $a$ to maximize (log)likelihood through gradient descent.
+        $$
+        \frac{\partial \hat{\mu}(y^j;a)}{\partial a_l}
+        = \frac{\partial}{\partial a_L} \left(\frac{1}{M-1} \sum_{i\ne j} \kappa_a(y^j,y^i)\right)
+        = \frac{\partial}{\partial a_l} \left(\frac{1}{M-1} \sum_{i\ne j} \frac{1}{(\sqrt{2\pi})^d \prod_{k=1}^d a_k} e^{-\frac{1}{2}\sum_{k=1}^d (\frac{y^j_k-y^i_k}{a_k})^2}\right)
+        $$
+        $$
+        = \frac{1}{(M-1)(\sqrt{2\pi})^d a_l \prod_{k=1}^d a_k} \sum_{i\ne j}
+        \left(-1 + (\frac{y^j_l-y^i_l}{a_l})^2\right) e^{-\frac{1}{2} \sum_{k=1}^d (\frac{y^j_k-y^i_k}{a_k})^2}
+        $$
+        
+        $$
+        \implies \frac{\partial \log \mathbf{P}(\mathbf{y}; a)}{\partial a_l}
+        = \sum_j \frac{\partial \log \left(\hat{\mu}(y^j;a)\right)}{\partial a_l}
+        = \sum_j \frac{1}{\hat{\mu}(y^j;a)} \frac{\partial \hat{\mu}(y^j;a)}{\partial a_l}
+        $$
+        $$
+        = -\frac{M}{a_l} + \frac{1}{a_l} \sum_j \left[
+        \frac{\sum_{i\ne j} \left(
+        (\frac{y^j_l-y^i_l}{a_l})^2 e^{-\frac{1}{2} \sum_{k=1}^d (\frac{y^j_k-y^i_k}{a_k})^2}
+        \right)}
+        {\sum_{i\ne j} e^{-\frac{1}{2} \sum_{k=1}^d (\frac{y^j_k-y^i_k}{a_k})^2}}
+        \right]
+        $$
+        
+        \item Rule of Thumb
+        \begin{align*}
+            a_k = (\frac{4}{d+2})^{\frac{1}{d+4}}
+            \cdot M^{-\frac{1}{d+4}} \cdot \sigma_k
+        \end{align*}
+        where $\sigma_k$ is the standard deviation of the samples data at kth dimension, ie. $\mathbf{y}_k$.
+    \end{enumerate}
+    
+    \item {\bf [Multivariate Gradient Descent]}
+    
+    With KDE, we again try to solve the minimization problem (\ref{eq3}).
+    Now we do a gradient descent in the direction of $-\nabla_{\mathbf{z}} L$ in every dimension of every sample $z^i$, with some learning rate $\eta$.
+    
+    \begin{enumerate}
+        \item 
+        $$
+        \textcolor{blue}{L_C} = \frac{1}{N} \sum_i \frac{1}{2}\|x^i-z^i\|_2^2
+        $$
+        \begin{align*}
+            \implies \frac{\partial \textcolor{blue}{L_C}}{\partial z^i_l}
+            = - \frac{1}{N}(x^i_l-z^i_l)
+        \end{align*}
+        
+        \item Plug in KDE ($a,b \in \mathbb{R}^d$):
+        \begin{align*}
+        % \centering
+            \textcolor{red}{L_F}
+            = \lambda \left[\sum_i \sum_j \left( 
+            \frac{1}{N^2}\kappa_a(z^i,z^j) -  \frac{1}{MN}\kappa_b(z^i,y^j) -   \frac{1}{MN}\kappa_a(y^i,z^j) +  \frac{1}{M^2}\kappa_b(y^i,y^j)
+            \right) \right]
+        \end{align*}
+        
+        \begin{align*}
+            \implies \frac{\partial \textcolor{red}{L_F}}{\partial z^i_l}
+            = \lambda \sum_j \biggl[
+             \frac{1}{N^2}\frac{1}{(\sqrt{2\pi})^d {a_l}^2 \prod_{k=1}^d a_k}  (z^j_l-z^i_l) e^{-\frac{1}{2} \sum_{k=1}^d (\frac{z^j_k-z^i_k}{a_k})^2} \\
+             -  \frac{1}{MN}\frac{1}{(\sqrt{2\pi})^d {b_l}^2 \prod_{k=1}^d b_k} (y^j_l-z^i_l) e^{-\frac{1}{2} \sum_{k=1}^d (\frac{y^j_k-z^i_k}{b_k})^2} \biggr]
+        \end{align*}
+        So to do gradient descent, we have $-\frac{\partial L}{\partial z^i_l} = -  \frac{\partial \textcolor{blue}{L_C}}{\partial z^i_l} -  \frac{\partial \textcolor{red}{L_F}}{\partial z^i_l}$.
+        
+        Again we ignore the partial derivative of $z^i$ wrt the KDE using $z^i$ as the center of the kernel.
+        \end{enumerate}
+    
     
 \end{enumerate}
 
