@@ -9,11 +9,15 @@ d = 2; % dimension
 method = 1; % method to compute bw (1: thumb; 2: deep)
 
 if (d==1)
-    x = mvnrnd(0,1,N); % samples drawn from rho (N-by-d matrix)
-    y = mvnrnd(5,1,M); % samples drawn from mu (M-by-d matrix)
+    x = rand(N,1); % samples drawn from rho (N-by-d matrix)
+    y = 8 + (10-8).*rand(M,1); % samples drawn from mu (M-by-d matrix)
+%     x = mvnrnd(0,1,N); % samples drawn from rho (N-by-d matrix)
+%     y = mvnrnd(10,1,M); % samples drawn from mu (M-by-d matrix)
 end
 
 if (d==2)
+%     x = [1 1] + rand(N,d); % samples drawn from rho (N-by-d matrix)
+%     y = [5 5] + [2 2].*rand(M,d); % samples drawn from mu (M-by-d matrix)
     x = mvnrnd([1;1],eye(2),N); % samples drawn from rho (N-by-d matrix)
     y = mvnrnd([5;5],eye(2),M); % samples drawn from mu (M-by-d matrix)
 end
@@ -31,9 +35,14 @@ MAX_STEP = 500; % maximum steps of grad dc
 
 % a = bw(z,1); % bandwidth for rho_T
 % b = bw(y,1); % bandwidth for mu
-c = 2; % multiplier of bandwidth
-a = c*bw([z;y],1); % use a common, large bandwidth for rho_T and mu
+c = 8; % initial multiplier of bandwidth
+dc = (c-1)/(MAX_STEP); % gradual decrease of c
+
+a = c*bw([z;y],method); % use a common, large bandwidth for rho_T and mu
 b = a;
+
+afinal = bw(y,1); % final bw for y using rule of thumb
+da = (a-afinal)/MAX_STEP; % gradual decrease of a (if not using rule of thumb to update)
 
 [LF,gradLF] = grad_LF(y,z,a,b);
 [LC,gradLC] = grad_LC(x,z);
@@ -43,7 +52,7 @@ gradL = gradLC + lambda.*gradLF;
 % gradL0 = grad_LC(x,z) + lambda.*grad_LF(y,z,a,b); % initial gradient wrt z
 % gradL = gradL0;
 
-tol = 1e-4; % (relative) tolerance
+tol = 1e-2; % (relative) tolerance
 i = 0;
 while (i<MAX_STEP && norm(gradL)>tol)
     if (i==0 && d==1) % visualize test function
@@ -69,8 +78,19 @@ while (i<MAX_STEP && norm(gradL)>tol)
     [z,eta,gradL,L] = grad_dc(x,y,z,a,b,lambda,eta,gradL,L);
 %     [z,eta_new,gradL] = grad_dc(x,y,z,a,b,lambda,eta,gradL);
 %     z = znew; gradL = gradL_new;
-    a = c.*bw([z;y],method); % use a common, large bandwidth for rho_T and mu
+
+    % update bw
+%     c = c-dc; % decrese the multiplier for bw
+%     a = c.*bw([z;y],1); % use rule of thumb to update bw
+    if (a>afinal)
+        a = a-da; % decrese a
+    end
     b = a;
+
+%     if (lambda<10000) 
+%         lambda = lambda*2;
+%     end
+    
     i = i+1;
 end
 
@@ -185,11 +205,11 @@ res1 = c1.*sum(exp(-1/2.*sum(tmp1.^2,1)),'all') - c2.*sum(exp(-1/2.*sum(tmp2.^2,
 % % approach 2 for grad: time-cosuming, but less memory? (not sure)
 
 % res3 = zeros(N,d);
-% tmp9 = 1/(N^2)/((sqrt(2*pi))^d)/prod(a);
-% tmp10 = 1/(M*N)/((sqrt(2*pi))^d)/prod(b);
+% tmp9 = 1/(N^2)/((a*sqrt(2*pi))^d);
+% tmp10 = 1/(M*N)/((b*sqrt(2*pi))^d);
 % for l=1:d
-%     tmp5 = (z(:,l)' - z(:,l))./(a(l)^2);
-%     tmp6 = (y(:,l)' - z(:,l))./(b(l)^2);
+%     tmp5 = (z(:,l)' - z(:,l))./(a^2);
+%     tmp6 = (y(:,l)' - z(:,l))./(b^2);
 %     for i=1:N
 %         tmp7 = sum(((z - z(i,:))./a).^2,2)';
 %         tmp8 = sum(((y - z(i,:))./b).^2,2)';
@@ -226,6 +246,10 @@ for l=1:d
      tmp1(l,:,:) = ((x(:,l)' - x(:,l))./a).^2;
 end
 
+% tmp = exp(-1/2.*sum(tmp1,1));
+% tmp = reshape(tmp,[N,N]);
+% any(diag(tmp)~=1,'all')
+
 tmp2 = (sum(sum(tmp1,1).*exp(-1/2.*sum(tmp1,1)),3)); % numerator
 tmp3 = (sum(exp(-1/2.*sum(tmp1,1)),3)) - 1; % denominator
 
@@ -241,8 +265,9 @@ res1 = -sum(log(1/(N-1)/((a*sqrt(2*pi))^d).*tmp3));
 
 % res3 = -N;
 % for j=1:N
-%     tmp1 = ((x(j,:)-x)./a).^2;
+%     tmp1 = sum(((x(j,:)-x)./a).^2,2);
 %     tmp2 = exp(-1/2.*tmp1);
+%     
 %     c = sum(tmp1.*tmp2,1); % numerator
 %     d = sum(tmp2,1) - 1; % denominator
 %     res3 = res3+c./d;
@@ -255,7 +280,8 @@ res1 = -sum(log(1/(N-1)/((a*sqrt(2*pi))^d).*tmp3));
 % %             d = d + tmp2(i);
 % %         end
 % %     end
-% %     res = res+c/d;
+% %     res3 = res3+c/d;
+% 
 % end
 % 
 % res3 = res3./a
@@ -268,15 +294,15 @@ N = length(x(:,1));
 d = length(x(1,:));
 
 % Rule of Thumb
-a = (4/(d+2))^(1/(d+4))*(N^(-1/(d+4)));
+a = (4/(d+2))^(1/(d+4))*(N^(-1/(d+4)))*mean(std(x));
 if (method == 1)
     return;
 
 elseif (method == 2)
     % deep method (gradient ascent)
-    a = a*2; % initial guess
-    max_steps = 2; % maximum number of steps
-    eta = 0.001; % initial learning rate
+%     a = a*2; % initial guess
+    max_steps = 20; % maximum number of steps
+    eta = 1e-4; % initial learning rate
     
     [P,grada] = grad_bw(x,a);
 %     P
@@ -287,19 +313,21 @@ elseif (method == 2)
         eta = eta*2;
         anew = a - eta.*grada;
         [Pnew,grada_new] = grad_bw(x,anew);
-        while (Pnew > P && eta > 1e-14)%Pnew > P) %&& (abs(L-Lnew)>0.1))
+        while (anew < 0 || Pnew > P) %&& eta > 1e-14)%Pnew > P) %&& (abs(L-Lnew)>0.1))
             eta = eta/2;
             anew = a - eta.*grada;
             [Pnew,grada_new] = grad_bw(x,anew);
         end
-        norm(grada_new);
-        P = Pnew;
-        grada = grada_new;
-        if (anew>0)
+
+        if (anew>0 && Pnew < P)
             a = anew;
+            P = Pnew;
+            grada = grada_new;
         end
         i = i+1;
+%         norm(grada)
     end
+%     i
 %     Pnew
 end
 
@@ -326,7 +354,7 @@ gradL_new = gradLC_new + lambda.*gradLF_new;
 
 % k=0;
 Lnew = LCnew + lambda.*LFnew;
-while (Lnew > L && eta>1e-16) %&& (abs(L-Lnew)>0.1))
+while (Lnew > L && eta>1e-20) %&& (abs(L-Lnew)>0.1))
 % while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
     eta = eta/2;
     znew = z - eta.*gradL;
@@ -343,6 +371,11 @@ while (Lnew > L && eta>1e-16) %&& (abs(L-Lnew)>0.1))
 end
 
 % gradL_new = gradLC_new + lambda.*gradLF_new;
+if (Lnew > L)
+    znew = z;
+    Lnew = L;
+    gradL_new = gradL;
+end
 
 end
 
