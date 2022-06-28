@@ -9,17 +9,17 @@ d = 2; % dimension
 method = 1; % method to compute bw (1: thumb; 2: deep)
 
 if (d==1)
-    x = rand(N,1); % samples drawn from rho (N-by-d matrix)
-    y = 8 + (10-8).*rand(M,1); % samples drawn from mu (M-by-d matrix)
-%     x = mvnrnd(0,1,N); % samples drawn from rho (N-by-d matrix)
-%     y = mvnrnd(10,1,M); % samples drawn from mu (M-by-d matrix)
+%     x = rand(N,1); % samples drawn from rho (N-by-d matrix)
+%     y = 8 + (10-8).*rand(M,1); % samples drawn from mu (M-by-d matrix)
+    x = mvnrnd(0,1,N); % samples drawn from rho (N-by-d matrix)
+    y = mvnrnd(10,1,M); % samples drawn from mu (M-by-d matrix)
 end
 
 if (d==2)
 %     x = [1 1] + rand(N,d); % samples drawn from rho (N-by-d matrix)
 %     y = [5 5] + [2 2].*rand(M,d); % samples drawn from mu (M-by-d matrix)
-    x = mvnrnd([1;1],eye(2),N); % samples drawn from rho (N-by-d matrix)
-    y = mvnrnd([5;5],eye(2),M); % samples drawn from mu (M-by-d matrix)
+    x = mvnrnd([1;1],5.*eye(2),N); % samples drawn from rho (N-by-d matrix)
+    y = mvnrnd([100;10],eye(2),M); % samples drawn from mu (M-by-d matrix)
 end
 
 % normalize x and y
@@ -31,7 +31,7 @@ y = xy(N+1:end,:);
 z = x; % start the transport with the original samples
 lambda = 5000; % regularization parameter (large)
 eta = 0.1; % initial (small) learning rate
-MAX_STEP = 500; % maximum steps of grad dc
+MAX_STEP = 5000; % maximum steps of grad dc
 
 % a = bw(z,1); % bandwidth for rho_T
 % b = bw(y,1); % bandwidth for mu
@@ -52,30 +52,64 @@ gradL = gradLC + lambda.*gradLF;
 % gradL0 = grad_LC(x,z) + lambda.*grad_LF(y,z,a,b); % initial gradient wrt z
 % gradL = gradL0;
 
-tol = 1e-2; % (relative) tolerance
+% plot test functions with initial bw
+if (d==1) % visualize test function
+    [Fz,Fy] = F(y,z,a,b);
+    figure();
+    plot(z,Fz,'.','Markersize',1);
+    hold on;
+    plot(y,Fy,'.','Markersize',1);
+    ylim([-1,1]);
+    legend('F(z)','F(y)');
+    title(sprintf("F evaluated at step 0 (with bandwidth multiplier %d)",c));
+end
+if (d==2) % visualize test function
+    [Fz,Fy] = F(y,z,a,b);
+    figure();
+    plot3(z(:,1),z(:,2),Fz,'.','Markersize',1);
+    hold on;
+    plot3(y(:,1),y(:,2),Fy,'.','Markersize',1);
+    zlim([-0.5,0.5]);
+    legend('F(z)','F(y)');
+    title(sprintf("F evaluated at step 0 (with bandwidth multiplier %d)",c));
+end
+hold off;
+
+tol = 1e-3; % grad norm tolerance
+eta_tol = 1e-32; % smallest learning rate
 i = 0;
+plotstep = 2;%MAX_STEP; 
+figure();
 while (i<MAX_STEP && norm(gradL)>tol)
-    if (i==0 && d==1) % visualize test function
-        [Fz,Fy] = F(y,z,a,b);
-        figure();
-        plot(z,Fz,'.','Markersize',1);
-        hold on;
-        plot(y,Fy,'.','Markersize',1);
-        ylim([-1,1]);
-        legend('F(z)','F(y)');
-        title(sprintf("F evaluated at step 0 (with bandwidth multiplier %d)",c));
+    if (mod(i,plotstep)==0 && d==1) % visualize test function
+        clf;
+        nbins=10;
+        histogram(x,nbins,'FaceColor','r','Normalization','probability'); hold on;
+        histogram(y,nbins,'FaceColor','b','Normalization','probability');
+        histogram(z,nbins,'FaceColor','g','Normalization','probability');
+        legend('x','y','z');
+        title(sprintf("Distribution of x, y, and z at final step %d (c = %d)",i,c));
+        disp(sprintf('at %d step, L =  %9.5e',i,L))
+        if i<MAX_STEP
+            input('Hit <return> to continue  '); 
+        end
     end
-    if (i==0 && d==2) % visualize test function
-        [Fz,Fy] = F(y,z,a,b);
-        figure();
-        plot3(z(:,1),z(:,2),Fz,'.','Markersize',1);
-        hold on;
-        plot3(y(:,1),y(:,2),Fy,'.','Markersize',1);
-        zlim([-0.5,0.5]);
-        legend('F(z)','F(y)');
-        title(sprintf("F evaluated at step 0 (with bandwidth multiplier %d)",c));
+    if (mod(i,plotstep)==0 && d==2) % visualize test function
+        clf;
+        plot(x(:,1),x(:,2), 'r.', 'Markersize', 5); hold on;
+        plot(y(:,1),y(:,2), 'b.', 'Markersize', 5);
+        plot(z(:,1),z(:,2), 'g.', 'Markersize', 5);
+        legend('x','y','z');
+        title(sprintf("Distribution of x, y, and z at step %d (c = %d)",i,c));
+        disp(sprintf('at %d step, L =  %9.5e',i,L))
+        if i<MAX_STEP
+            input('Hit <return> to continue  '); 
+        end
     end
-    [z,eta,gradL,L] = grad_dc(x,y,z,a,b,lambda,eta,gradL,L);
+    [z,eta,gradL,L] = grad_dc(x,y,z,a,b,lambda,eta,gradL,L,eta_tol);
+    if (eta<eta_tol) % stop when no longer descent
+        break;
+    end
 %     [z,eta_new,gradL] = grad_dc(x,y,z,a,b,lambda,eta,gradL);
 %     z = znew; gradL = gradL_new;
 
@@ -94,24 +128,27 @@ while (i<MAX_STEP && norm(gradL)>tol)
     i = i+1;
 end
 
+% final L (loss)
+disp(sprintf('at %d step, L =  %9.5e',i,L));
+
 % visualize results
-figure();
+% figure();
 
 % plot in 1d
 if (d==1)
     nbins=10;
-    histogram(x,nbins,'Normalization','probability'); hold on;
-    histogram(y,nbins,'Normalization','probability');
-    histogram(z,nbins,'Normalization','probability');
+    histogram(x,nbins,'FaceColor','r','Normalization','probability'); hold on;
+    histogram(y,nbins,'FaceColor','b','Normalization','probability');
+    histogram(z,nbins,'FaceColor','g','Normalization','probability');
     legend('x','y','z');
     title(sprintf("Distribution of x, y, and z at final step %d (c = %d)",i,c));
 end
 
-% % plot in 2d
+% plot in 2d
 if (d==2)
-    plot(x(:,1),x(:,2), '.', 'Markersize', 5); hold on;
-    plot(y(:,1),y(:,2), '.', 'Markersize', 5);
-    plot(z(:,1),z(:,2), '.', 'Markersize', 5);
+    plot(x(:,1),x(:,2), 'r.', 'Markersize', 5); hold on;
+    plot(y(:,1),y(:,2), 'b.', 'Markersize', 5);
+    plot(z(:,1),z(:,2), 'g.', 'Markersize', 5);
     legend('x','y','z');
     title(sprintf("Distribution of x, y, and z at final step %d (c = %d)",i,c));
 end
@@ -300,9 +337,9 @@ if (method == 1)
 
 elseif (method == 2)
     % deep method (gradient ascent)
-%     a = a*2; % initial guess
-    max_steps = 20; % maximum number of steps
-    eta = 1e-4; % initial learning rate
+%     a = a*10; % initial guess
+    max_steps = 10; % maximum number of steps
+    eta = 0.1; % initial learning rate
     
     [P,grada] = grad_bw(x,a);
 %     P
@@ -313,12 +350,13 @@ elseif (method == 2)
         eta = eta*2;
         anew = a - eta.*grada;
         [Pnew,grada_new] = grad_bw(x,anew);
-        while (anew < 0 || Pnew > P) %&& eta > 1e-14)%Pnew > P) %&& (abs(L-Lnew)>0.1))
+        while ((Pnew > P || anew<0) && eta > 1e-32)%|| anew < 0) %&& (abs(L-Lnew)>0.1))
             eta = eta/2;
             anew = a - eta.*grada;
             [Pnew,grada_new] = grad_bw(x,anew);
         end
-
+%         P
+%         Pnew
         if (anew>0 && Pnew < P)
             a = anew;
             P = Pnew;
@@ -337,11 +375,12 @@ end
 % bw1 = @(x,N)(0.9*min(std(x),iqr(x)/1.34)*(N^(-1/5)));
 
 %% Gradient Descent (one step)
-function [znew,eta,gradL_new,Lnew] = grad_dc(x,y,z,a,b,lambda,eta,gradL,L)
+function [znew,eta,gradL_new,Lnew] = grad_dc(x,y,z,a,b,lambda,eta,gradL,L,eta_tol)
 
 % lambda: regularization parameter
 % eta: learning rate
 % gradL: gradient of the objective L wrt current z
+% eta_tol: tolerance for (smallest) learning rate
 
 eta = eta*2;
 znew = z - eta.*gradL;
@@ -354,7 +393,7 @@ gradL_new = gradLC_new + lambda.*gradLF_new;
 
 % k=0;
 Lnew = LCnew + lambda.*LFnew;
-while (Lnew > L && eta>1e-20) %&& (abs(L-Lnew)>0.1))
+while (Lnew > L && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
 % while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
     eta = eta/2;
     znew = z - eta.*gradL;
