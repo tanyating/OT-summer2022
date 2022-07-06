@@ -31,12 +31,12 @@ y = xy(N+1:end,:);
 z = x; % start the transport with the original samples
 
 eta = 0.1; % initial (small) learning rate
-gamma = 100; % a threshold number of steps;
-MAX_STEP = gamma + 10; % maximum steps of grad dc
-INNER_STEP = 3; % inner number of grad dc for each set of lambda and bw
+gamma = 200; % a threshold number of steps;
+MAX_STEP = gamma + 100; % maximum steps of grad dc
+INNER_STEP = 1; % inner number of grad dc for each set of lambda and bw
 
 lambda = 5e3; % intial regularization parameter 
-lambda_final = 5e5; % final regularization parameter (large)
+lambda_final = 5e4; % final regularization parameter (large)
 dl = (lambda_final-lambda)/(gamma); % lambda increment
 
 % a = bw(z,1); % bandwidth for rho_T
@@ -52,7 +52,7 @@ da = (a-afinal)/(gamma); % gradual decrease of a (if not using rule of thumb to 
 
 [LF,gradLF] = grad_LF(y,z,a,b);
 [LC,gradLC] = grad_LC(x,z);
-L = LC + lambda.*LF;
+% L = LC + lambda.*LF;
 gradL = gradLC + lambda.*gradLF;
 % gradL0 = gradL;
 % gradL0 = grad_LC(x,z) + lambda.*grad_LF(y,z,a,b); % initial gradient wrt z
@@ -80,12 +80,12 @@ if (d==2) % visualize test function
     title(sprintf("F evaluated at step 0 (with bandwidth multiplier %d)",c));
 end
 
-tol = 1e-3; % grad norm tolerance
+tol = 1e-2; % grad norm tolerance
 eta_tol = 1e-32; % smallest learning rate
 i = 0;
-plotstep = 5;%MAX_STEP; 
+plotstep = 5000;%MAX_STEP; 
 figure();
-while (i<MAX_STEP && norm(gradL)>tol)
+while (i<gamma) %&& norm(gradL)>tol)
     % plot distribution at some steps
     if (mod(i,plotstep)==0 && d==1) % visualize test function
         clf;
@@ -98,9 +98,9 @@ while (i<MAX_STEP && norm(gradL)>tol)
         % print loss with fixed lambda and bw
         disp(sprintf('at %d step, LC = %9.5e, LF = %9.5e',i,LC,LF));
 
-        if i<MAX_STEP
+%         if i<MAX_STEP
             input('Hit <return> to continue  '); 
-        end
+%         end
     end
     if (mod(i,plotstep)==0 && d==2) % visualize test function
         clf;
@@ -113,23 +113,18 @@ while (i<MAX_STEP && norm(gradL)>tol)
         disp(sprintf('at %d step, LC = %9.5e, LF = %9.5e',i,LC,LF));
 %         lambda
 
-        if i<MAX_STEP
+%         if i<MAX_STEP
             input('Hit <return> to continue  '); 
-        end
+%         end
     end
     
     % gradient descent with current set of bw and lambda
-%     if (i<=gamma)
-        [LF,gradLF] = grad_LF(y,z,a,b);
-        [LC,gradLC] = grad_LC(x,z);
-        L = LC + lambda.*LF;
-        gradL = gradLC + lambda.*gradLF;
-        eta = 0.1;
-%     end
-    
-    for k=1:INNER_STEP
-        [z,eta,gradL,L] = grad_dc(x,y,z,a,b,lambda,eta,gradL,L,eta_tol);
+    k=0;
+    while (k<INNER_STEP && norm(gradL)>tol) % inner loop
+        [z,eta,gradLC,gradLF,LC,LF] = grad_dc(x,y,z,a,b,lambda,eta,gradLC,gradLF,LC,LF,eta_tol);
+        k = k+1;
     end
+    
 %     if (eta<eta_tol) % stop when no longer descent
 %         break;
 %     end
@@ -141,7 +136,7 @@ while (i<MAX_STEP && norm(gradL)>tol)
     % update bw and lambda
 %     c = c-dc; % decrese the multiplier for bw
 %     a = c.*bw([z;y],1); % use rule of thumb to update bw
-    if (i<gamma)%(a>afinal)
+%     if (i<gamma)%(a>afinal)
         a = a-da; % decrese a
 %         c = c-dc; % decrese the multiplier for bw
 %         a = c.*bw([z;y],1); % use rule of thumb to update bw
@@ -149,7 +144,7 @@ while (i<MAX_STEP && norm(gradL)>tol)
         b = a;
         
         lambda = lambda+dl; % increase lambda
-    end
+%     end
     
 %     if (lambda<lambda_final)
 %         lambda = lambda+dl; % increase lambda
@@ -158,6 +153,60 @@ while (i<MAX_STEP && norm(gradL)>tol)
 %     if (lambda<10000) 
 %         lambda = lambda*2;
 %     end
+
+    % new function and gradient values
+%     if (i<=gamma)
+        [LF,gradLF] = grad_LF(y,z,a,b);
+        [LC,gradLC] = grad_LC(x,z);
+%         L = LC + lambda.*LF;
+        gradL = gradLC + lambda.*gradLF;
+%         eta = 0.1;
+%     end
+    
+    
+    i = i+1;
+end
+
+while (i<MAX_STEP) %|| norm(gradL)>tol) % extra steps for final set of lambda and bw
+    % plot distribution at some steps
+    if (mod(i,plotstep)==0 && d==1) % visualize test function
+        clf;
+        nbins=10;
+        histogram(x,nbins,'FaceColor','r','Normalization','probability'); hold on;
+        histogram(y,nbins,'FaceColor','b','Normalization','probability');
+        histogram(z,nbins,'FaceColor','g','Normalization','probability');
+        legend('x','y','z');
+        title(sprintf("Distribution of x, y, and z at final step %d (c = %d)",i,c));
+        % print loss with fixed lambda and bw
+        disp(sprintf('at %d step, LC = %9.5e, LF = %9.5e',i,LC,LF));
+
+%         if i<MAX_STEP
+            input('Hit <return> to continue  '); 
+%         end
+    end
+    if (mod(i,plotstep)==0 && d==2) % visualize test function
+        clf;
+        plot(x(:,1),x(:,2), 'r.', 'Markersize', 5); hold on;
+        plot(y(:,1),y(:,2), 'b.', 'Markersize', 5);
+        plot(z(:,1),z(:,2), 'g.', 'Markersize', 5);
+        legend('x','y','z');
+        title(sprintf("Distribution of x, y, and z at step %d (c = %d)",i,c));
+        % print loss with fixed lambda and bw
+        disp(sprintf('at %d step, LC = %9.5e, LF = %9.5e',i,LC,LF));
+%         lambda
+
+%         if i<MAX_STEP
+            input('Hit <return> to continue  '); 
+%         end
+    end
+    
+     % gradient descent with current set of bw and lambda   
+    k=0;
+    while (k<INNER_STEP && norm(gradL)>tol) % inner loop
+        [z,eta,gradLC,gradLF,LC,LF] = grad_dc(x,y,z,a,b,lambda,eta,gradLC,gradLF,LC,LF,eta_tol);
+        k = k+1;
+    end
+    gradL = gradLC + lambda.*gradLF;
     
     i = i+1;
 end
@@ -393,7 +442,7 @@ elseif (method == 2)
 %         P
 %         Pnew
         if (anew>0 && Pnew < P)
-            a = anew
+            a = anew;
             P = Pnew;
             grada = grada_new;
         end
@@ -410,7 +459,7 @@ end
 % bw1 = @(x,N)(0.9*min(std(x),iqr(x)/1.34)*(N^(-1/5)));
 
 %% Gradient Descent (one step)
-function [znew,eta,gradL_new,Lnew] = grad_dc(x,y,z,a,b,lambda,eta,gradL,L,eta_tol)
+function [znew,eta,gradLC_new,gradLF_new,LCnew,LFnew] = grad_dc(x,y,z,a,b,lambda,eta,gradLC,gradLF,LC,LF,eta_tol)
 
 % lambda: regularization parameter
 % eta: learning rate
@@ -418,16 +467,18 @@ function [znew,eta,gradL_new,Lnew] = grad_dc(x,y,z,a,b,lambda,eta,gradL,L,eta_to
 % eta_tol: tolerance for (smallest) learning rate
 
 eta = eta*2;
+gradL = gradLC + lambda.*gradLF;
 znew = z - eta.*gradL;
 [LFnew,gradLF_new] = grad_LF(y,znew,a,b);
 [LCnew,gradLC_new] = grad_LC(x,znew);
-gradL_new = gradLC_new + lambda.*gradLF_new;
+% gradL_new = gradLC_new + lambda.*gradLF_new;
 % [gradL_new] = grad_LC(x,znew) + lambda.*grad_LF(y,znew,a,b);
 % n1 = norm(gradL);
 % n2 = norm(gradL_new);
 
 % k=0;
 Lnew = LCnew + lambda.*LFnew;
+L = LC + lambda.*LF;
 while (Lnew > L && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
 % while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
     eta = eta/2;
@@ -435,7 +486,7 @@ while (Lnew > L && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
     [LFnew,gradLF_new] = grad_LF(y,znew,a,b);
     [LCnew,gradLC_new] = grad_LC(x,znew);
     Lnew = LCnew + lambda.*LFnew;
-    gradL_new = gradLC_new + lambda.*gradLF_new;
+%     gradL_new = gradLC_new + lambda.*gradLF_new;
 %     gradL_new = grad_LC(x,znew) + lambda.*grad_LF(y,znew,a,b);
 %     n2 = norm(gradL_new);
 %     k=k+1;
@@ -445,10 +496,13 @@ while (Lnew > L && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
 end
 
 % gradL_new = gradLC_new + lambda.*gradLF_new;
-if (Lnew > L)
+if (Lnew > L) % if no decrease in objective, don't descent
     znew = z;
-    Lnew = L;
-    gradL_new = gradL;
+%     Lnew = L;
+    LCnew = LC;
+    LFnew = LF;
+    gradLC_new = gradLC;
+    gradLF_new = gradLF;
 end
 
 end
