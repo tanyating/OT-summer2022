@@ -25,8 +25,9 @@ if (d==2)
 %     x = mvnrnd([0;0],[20 0;0 1],N); % samples drawn from rho (N-by-d matrix)
     theta = pi/6;
     x = [cos(theta).*x(:,1)+sin(theta).*x(:,2), -sin(theta).*x(:,1)+cos(theta).*x(:,2)];
-% %     y = y+0;
+    y = y+5;
 %     y = mvnrnd([0;0],[20 0;0 1],M); % samples drawn from mu (M-by-d matrix)
+%     y = [cos(theta).*y(:,1)+sin(theta).*y(:,2), -sin(theta).*y(:,1)+cos(theta).*y(:,2)];
 end
 
 %% normalize x and y
@@ -39,23 +40,27 @@ end
 z = x; % start the transport with the original samples
 w = x; % start with no free transformation
 
-K = 500; % a threshold number of steps;
-MAX_STEP = K + 500; % maximum steps of grad dc
+K = 6000; % a threshold number of steps;
+MAX_STEP = K + 6000; % maximum steps of grad dc
 INNER_STEP = 1; % inner number of grad dc for each set of lambda and bw
 
 eta = zeros(MAX_STEP+1,1);
 eta2 = zeros(MAX_STEP+1,1);
 eta3 = zeros(MAX_STEP+1,1);
-gradLNorm = zeros(MAX_STEP+1,1);
-gradTrNorm = zeros(MAX_STEP+1,1);
-gradRotNorm = zeros(MAX_STEP+1,1);
+gradLzNorm = zeros(MAX_STEP+1,1);
+gradLwNorm = zeros(MAX_STEP+1,1);
 
 eta(1) = 0.1; % initial (small) learning rate wrt z
-eta2(1) = 0.1; % initial (small) learning rate wrt free trans
-eta3(1) = 0.1; % initial (small) learning rate wrt free rot
-lambda = 5e2; % intial regularization parameter 
-lambda_final = 5e4; % final regularization parameter (large)
+eta2(1) = 0.1; % initial (small) learning rate wrt w
+eta3(1) = 0.1;
+lambda = 5e1; % intial regularization parameter wrt z
+lambda_final = 5e6; % final regularization parameter (large)
 dl = (lambda_final-lambda)/(K); % lambda increment
+gamma = 5; % regularization parameter wrt w
+gamma_final = 5000; % final regularization parameter (large)
+dg = (gamma_final-gamma)/(K); % lambda increment
+
+alpha = 500; % threshold value to update lambda
 
 % a = bw(z,1); % bandwidth for rho_T
 % b = bw(y,1); % bandwidth for mu
@@ -69,21 +74,23 @@ afinal = bw(y,1); % final bw for y using rule of thumb
 da = (a-afinal)/(K); % gradual decrease of a (if not using rule of thumb to update)
 
 % initial gradients and objective values
-[LF,gradLF] = grad_LF(y,z,a,b);
-[LC,gradLC] = grad_LC(w,z);
+[LF,gradLFz] = grad_LF_z(y,z,a,b);
+[LC,gradLCz] = grad_LC_z(w,z);
 % L = LC + lambda.*LF;
-gradL = gradLC + lambda.*gradLF;
-gradLNorm(1) = norm(gradL);
-[LC,gradRot] = grad_rot2d(w,z);
-[LC,gradTr] = grad_tr(w,z);
-gradTrNorm(1) = norm(gradTr);
-gradRotNorm(1) = norm(gradRot);
+gradLz = gradLCz + lambda.*gradLFz;
+gradLzNorm(1) = norm(gradLz);
+[LC,gradLCw] = grad_LC_w(w,z);
+[LR,gradLRw] = grad_LR_w(w,x);
+% L = LC + lambda.*LF + gamma.*LR;
+gradLw = gradLCw + gamma.*gradLRw;
+gradLwNorm(1) = norm(gradLw);
 
 tol = 1e-10; % grad norm tolerance
 eta_tol = 1e-32; % smallest learning rate
 i = 0;
 plotstep = MAX_STEP; 
 figure();
+axis equal;
 
 % transport/grad dc steps
 while (i<K) %&& norm(gradL)>tol)
@@ -109,24 +116,34 @@ while (i<K) %&& norm(gradL)>tol)
         plot(z(:,1),z(:,2), 'g.', 'Markersize', 5);
         legend('x','y','w','z');
         title(sprintf("Distribution of x, y, w, and z at step %d (c = %d)",i,c));
+        axis equal;
         % print loss with fixed lambda and bw
         disp(sprintf('at %d step, LC = %9.5e, LF = %9.5e',i,LC,LF));
         input('Hit <return> to continue  ');
     end
     
+    % projected method to update lambda
+    lambda_min = alpha - sum(gradLCz.*gradLFz,'all')/sum(gradLFz.^2,'all');
+    if (lambda_min >= lambda && lambda_min <= lambda_final)
+        lambda = lambda_min;
+    elseif (lambda_min > lambda_final)
+        lambda = lambda_final;
+    end
+%     lambda
+    
     % gradient descent with current set of bw and lambda
     k=0;
-    while (k<INNER_STEP && norm(gradL)>tol) % inner loop
+    while (k<INNER_STEP) %&& norm(gradL)>tol) % inner loop
         % 1) grad dc wrt z
         [z,eta(i+2)] = grad_dc_z(w,y,z,a,b,lambda,eta(i+1),eta_tol);
-%         [z,w,eta(i+2)] = grad_dc(w,y,z,a,b,lambda,eta(i+1),eta_tol);
+%         [z,w,eta(i+2)] = grad_dc(x,w,y,z,a,b,lambda,gamma,eta(i+1),eta_tol);
         
-        % 2) grad dc wrt w
-        [w,eta3(i+2)] = grad_dc_rot2d(w,z,eta3(i+1),eta_tol);
-%         [w,eta2(i+2)] = grad_dc_tr(w,z,eta2(i+1),eta_tol);
-%         [w,eta2(i+2)] = grad_dc_rot_tr(w,z,eta2(i+1),eta_tol);
-
-        
+        % 1) grad dc wrt w
+%         if (i>5)
+        [w,eta2(i+2)] = grad_dc_w(w,x,z,gamma,eta2(i+1),eta_tol);
+%         [w,eta2(i+2)] = grad_dc_LC_w(w,z,eta2(i+1),eta_tol);
+%         [w,eta3(i+2)] = grad_dc_LR_w(w,x,gamma,eta3(i+1),eta_tol);
+%         end
         k = k+1;
     end
     
@@ -134,24 +151,39 @@ while (i<K) %&& norm(gradL)>tol)
     % update bw and lambda
     a = a-da; % decrese bw
     b = a;
+%     c = c-dc; % decrese the multiplier for bw
+%     a = c.*bw([z;y],1); % use rule of thumb to update bw
+%     %         b-a
+%     b = a;
     
-    lambda = lambda+dl; % increase lambda
+%     lambda = lambda+dl; % increase lambda
+    
+    gamma = gamma+dg; % increase gamma
 
     % new function and gradient values
-    [LF,gradLF] = grad_LF(y,z,a,b);
-    [LC,gradLC] = grad_LC(w,z);
-%     L = LC + lambda.*LF;
-    gradL = gradLC + lambda.*gradLF;
-    gradLNorm(i+2) = norm(gradL);
-    [LC,gradRot] = grad_rot2d(w,z);
-    [LC,gradTr] = grad_tr(w,z);
-    gradTrNorm(i+2) = norm(gradTr);
-    gradRotNorm(i+2) = norm(gradRot);
+    [LF,gradLFz] = grad_LF_z(y,z,a,b);
+    [LC,gradLCz] = grad_LC_z(w,z);
+    % L = LC + lambda.*LF;
+    gradLz = gradLCz + lambda.*gradLFz;
+    gradLzNorm(i+2) = norm(gradLz);
+    [LC,gradLCw] = grad_LC_w(w,z);
+    [LR,gradLRw] = grad_LR_w(w,x);
+    % L = LC + lambda.*LF + gamma.*LR;
+    gradLw = gradLCw + gamma.*gradLRw;
+    gradLwNorm(i+2) = norm(gradLw);
     
+%     norm(gradLCw)
+%     norm(gradLRw)
+    
+%     gradLCw
+%     eta2(i+2)
+%     gamma.*gradLRw
+
     
     i = i+1;
 end
 
+% gamma = 1;
 while (i<MAX_STEP) %|| norm(gradL)>tol) % extra steps for final set of lambda and bw
     % plot distribution at some steps
     if (mod(i,plotstep)==0 && d==1) % visualize test function
@@ -175,38 +207,48 @@ while (i<MAX_STEP) %|| norm(gradL)>tol) % extra steps for final set of lambda an
         plot(z(:,1),z(:,2), 'g.', 'Markersize', 5);
         legend('x','y','w','z');
         title(sprintf("Distribution of x, y, w, and z at step %d (c = %d)",i,c));
+        axis equal;
         % print loss with fixed lambda and bw
         disp(sprintf('at %d step, LC = %9.5e, LF = %9.5e',i,LC,LF));
         input('Hit <return> to continue  ');
     end
     
-     % gradient descent with current set of bw and lambda   
+    lambda_min = alpha - sum(gradLCz.*gradLFz,'all')/sum(gradLFz.^2,'all');
+    if (lambda_min >= lambda && lambda_min <= lambda_final)
+        lambda = lambda_min;
+    elseif (lambda_min > lambda_final)
+        lambda = lambda_final;
+    end
+    
+    % gradient descent with current set of bw and lambda
     k=0;
-    while (k<INNER_STEP && norm(gradL)>tol) % inner loop
+    while (k<INNER_STEP) %&& norm(gradL)>tol) % inner loop
         % 1) grad dc wrt z
         [z,eta(i+2)] = grad_dc_z(w,y,z,a,b,lambda,eta(i+1),eta_tol);
-%         [z,w,eta(i+2)] = grad_dc(w,y,z,a,b,lambda,eta(i+1),eta_tol);
-        
+%         [z,w,eta(i+2)] = grad_dc(x,w,y,z,a,b,lambda,gamma,eta(i+1),eta_tol);
+
         % 2) grad dc wrt w
-        [w,eta3(i+2)] = grad_dc_rot2d(w,z,eta3(i+1),eta_tol);
-%         [w,eta2(i+2)] = grad_dc_tr(w,z,eta2(i+1),eta_tol);
-%         [w,eta2(i+2)] = grad_dc_rot_tr(w,z,eta2(i+1),eta_tol);
-        
+        [w,eta2(i+2)] = grad_dc_w(w,x,z,gamma,eta2(i+1),eta_tol);
+%         [w,eta2(i+2)] = grad_dc_LC_w(w,z,eta2(i+1),eta_tol);
+%         [w,eta3(i+2)] = grad_dc_LR_w(w,x,gamma,eta3(i+1),eta_tol);
         
         k = k+1;
     end
     
-    % new function and gradient values
-    [LF,gradLF] = grad_LF(y,z,a,b);
-    [LC,gradLC] = grad_LC(w,z);
-%     L = LC + lambda.*LF;
-    gradL = gradLC + lambda.*gradLF;
-    gradLNorm(i+2) = norm(gradL);
-    [LC,gradRot] = grad_rot2d(w,z);
-    [LC,gradTr] = grad_tr(w,z);
-    gradTrNorm(i+2) = norm(gradTr);
-    gradRotNorm(i+2) = norm(gradRot);
     
+    % new function and gradient values
+    [LF,gradLFz] = grad_LF_z(y,z,a,b);
+    [LC,gradLCz] = grad_LC_z(w,z);
+    % L = LC + lambda.*LF;
+    gradLz = gradLCz + lambda.*gradLFz;
+    gradLzNorm(i+2) = norm(gradLz);
+    [LC,gradLCw] = grad_LC_w(w,z);
+    [LR,gradLRw] = grad_LR_w(w,x);
+    % L = LC + lambda.*LF + gamma.*LR;
+    gradLw = gradLCw + gamma.*gradLRw;
+    gradLwNorm(i+2) = norm(gradLw);
+%     norm(gradLRw)
+%     norm(gradLCw)
     i = i+1;
 end
 
@@ -215,11 +257,9 @@ end
 disp(sprintf('at %d step, LC = %9.5e, LF = %9.5e',i,LC,LF));
 % [LC,gradRot] = grad_rot2d(w,z);
 % [LC,gradTr] = grad_tr(w,z);
-norm(gradL)
-norm(gradTr)
-norm(gradRot)
-LC
-LF
+norm(gradLz)
+norm(gradLw)
+LR
 
 % visualize results
 % figure();
@@ -242,138 +282,58 @@ if (d==2)
     plot(w(:,1),w(:,2), 'm.', 'Markersize', 5);
     plot(z(:,1),z(:,2), 'g.', 'Markersize', 5);
     legend('x','y','w','z');
+    axis equal;
     title(sprintf("Distribution of x, y, w, and z at final step %d (c = %d)",i,c));
 end
 
 % plot learning rates
 figure();
 plot(0:MAX_STEP,eta,'r.-'); hold on;
-% plot(0:MAX_STEP,eta2,'b.', 'Markersize', 3);
-% plot(0:MAX_STEP,eta3,'g.', 'Markersize', 3);
 xlabel('number of steps');
 ylabel('\eta');
-% legend('grad dc wrt z','free translation','free rotation');
-% title('learning rates');
 title('learning rates for grad dc wrt z');
 
 figure();
 plot(0:MAX_STEP,eta2,'b.-');
 xlabel('number of steps');
 ylabel('\eta');
-title('learning rates for grad dc wrt free translation');
+title('learning rates for grad dc wrt w');
 
-figure();
-plot(0:MAX_STEP,eta3,'g.-');
-xlabel('number of steps');
-ylabel('\eta');
-title('learning rates for grad dc wrt free rotation');
 
 % plot gradient norms
 figure();
-plot(0:MAX_STEP,gradLNorm,'r.-');
+plot(0:MAX_STEP,gradLzNorm,'r.-');
 xlabel('number of steps');
 ylabel('gradient norm');
 title('gradient norm wrt z');
 
 figure();
-plot(0:MAX_STEP,gradTrNorm,'b.-');
+plot(0:MAX_STEP,gradLwNorm,'b.-');
 xlabel('number of steps');
 ylabel('gradient norm');
-title('gradient norm wrt free translation');
+title('gradient norm wrt w');
 
-figure();
-plot(0:MAX_STEP,gradRotNorm,'g.-');
-xlabel('number of steps');
-ylabel('gradient norm');
-title('gradient norm wrt free rotation');
 
 %---------------------------------------------
 
 %% Gradient 
 
-% compute L_C and gradient for L_C
-function [res1,res2] = grad_LC(x,z)
+% compute L_C and gradient for L_C wrt z
+function [res1,res2] = grad_LC_z(w,z)
 
 % res1: L_C
 % res2: grad of L_C wrt z
 
-N = length(x(:,1));
-tmp = x-z;
+N = length(w(:,1));
+tmp = w-z;
 res1 = 1/N/2.*sum(tmp.^2,'all');
 res2 = -1/N.*(tmp);
 
 end
 
-% compute L_C and gradient for translation
-function [res1,res2] = grad_tr(w,z)
 
-% res1: L_C
-% res2: grad of L_C wrt delta=0
-
-N = length(w(:,1));
-tmp = w-z;
-res1 = 1/N/2.*sum(tmp.^2,'all');
-res2 = 1/N.*sum(tmp,1);
-
-end
-
-% compute L_C and gradient for rotation in 2D
-function [res1,res2] = grad_rot2d(w,z)
-
-% res1: L_C
-% res2: grad of L_C wrt theta=0
-
-N = length(w(:,1));
-tmp = w-z;
-res1 = 1/N/2.*sum(tmp.^2,'all');
-% res2 = 1/N.*sum(tmp(:,1).*w(:,2)-tmp(:,2).*w(:,1));
-res2 = sum(-z(:,1).*w(:,2) + z(:,2).*w(:,1))/N;
-
-end
-
-% compute hessian (2nd derivative) for rotation in 2D
-function [res] = hess_rot2d(w,z)
-
-% res: 2nd derivative of L_C wrt theta=0
-
-N = length(w(:,1));
-res = sum(z(:,1).*w(:,1) + z(:,2).*w(:,2))/N;
-
-end
-
-% compute test function F at y and z
-function [Fz,Fy] = F(y,z,a,b)
-
-N = length(z(:,1));
-M = length(y(:,1));
-d = length(z(1,:));
-
-tmp1 = zeros(d,N,N);
-tmp2 = zeros(d,N,M);
-tmp3 = zeros(d,M,N);
-tmp4 = zeros(d,M,M);
-
-for l=1:d
-     tmp1(l,:,:) = (z(:,l)' - z(:,l))./a;
-     tmp2(l,:,:) = (y(:,l)' - z(:,l))./b;
-     tmp3(l,:,:) = (z(:,l)' - y(:,l))./a;
-     tmp4(l,:,:) = (y(:,l)' - y(:,l))./b;
-end
-
-% normalizing constants
-c1 = 1/(N)/((a*sqrt(2*pi))^d);
-c2 = 1/(M)/((b*sqrt(2*pi))^d);
-
-Fz = c1.*sum(exp(-1/2.*sum(tmp1.^2,1)),3) - c2.*sum(exp(-1/2.*sum(tmp2.^2,1)),3);
-Fy = c1.*sum(exp(-1/2.*sum(tmp3.^2,1)),3) - c2.*sum(exp(-1/2.*sum(tmp4.^2,1)),3);
-
-Fz = Fz';
-Fy = Fy';
-
-end
-
-% compute L_F and gradient for L_F (without lambda)
-function [res1,res2] = grad_LF(y,z,a,b)
+% compute L_F and gradient for L_F (without lambda) wrt z
+function [res1,res2] = grad_LF_z(y,z,a,b)
 
 N = length(z(:,1));
 M = length(y(:,1));
@@ -411,6 +371,57 @@ res1 = c1.*sum(exp(-1/2.*sum(tmp1.^2,1)),'all') - c2.*sum(exp(-1/2.*sum(tmp2.^2,
 
 
 end
+
+% compute L_C and gradient for L_C wrt w
+function [res1,res2] = grad_LC_w(w,z)
+
+% res1: L_C
+% res2: grad of L_C wrt z
+
+N = length(w(:,1));
+tmp = w-z;
+res1 = 1/N/2.*sum(tmp.^2,'all');
+res2 = 1/N.*(tmp);
+
+end
+
+
+% compute L_R and gradient for L_R (without gamma) wrt w
+function [res1,res2] = grad_LR_w(w,x)
+
+N = length(w(:,1));
+d = length(w(1,:));
+eps_sqr = var(x,0,'all')/1000; % some small number
+
+% approach 1 for grad: memory costly, but faster?
+
+% store all pairs of x-x and w-w
+tmp1 = zeros(d,N,N);
+tmp2 = zeros(d,N,N);
+
+for l=1:d
+     tmp1(l,:,:) = (w(:,l) - w(:,l)');
+     tmp2(l,:,:) = (x(:,l) - x(:,l)');
+end
+
+tmp3 = sum(tmp1.^2,1);
+tmp4 = sum(tmp2.^2,1);
+tmp5 = (tmp3./(tmp4+eps_sqr)-1);
+tmp6 = tmp1./(tmp4+eps_sqr);
+
+% tmp7 = reshape(tmp5.^2,N,N);
+% diag(tmp7)
+% tmp7(N,N/2)
+% tmp7(N/2,N)
+
+res1 = (sum((tmp5.^2)./2,'all'));
+res1 = res1'./(N^2);
+
+res2 = (sum(4*tmp5.*tmp6,3));%./2; 
+res2 = res2'./(N^2);
+
+end
+
 
 %% KDE bandwidths (default Gaussian kernel)
 
@@ -499,43 +510,45 @@ end
 % bw1 = @(x,N)(0.9*min(std(x),iqr(x)/1.34)*(N^(-1/5)));
 
 %% Gradient Descent (one step)
-% grad dc wrt z and rot/tr (w)
-function [znew,wnew,eta] = grad_dc(w,y,z,a,b,lambda,eta,eta_tol)
+
+% grad dc wrt z and w together
+function [znew,wnew,eta] = grad_dc(x,w,y,z,a,b,lambda,gamma,eta,eta_tol)
 
 % lambda: regularization parameter
 % eta: learning rate
 % eta_tol: tolerance for (smallest) learning rate
 
-[LF,gradLF] = grad_LF(y,z,a,b);
-[LC,gradLC] = grad_LC(w,z);
-gradL = gradLC + lambda.*gradLF;
-[LC,gradRot] = grad_rot2d(w,z);
-[LC,gradTr] = grad_tr(w,z);
-L = LC + lambda.*LF;
+[LF,gradLF] = grad_LF_z(y,z,a,b);
+[LC,gradLCz] = grad_LC_z(w,z);
+[LR,gradLR] = grad_LR_w(w,x);
+[LC,gradLCw] = grad_LC_w(w,z);
 
+L = LC + lambda.*LF + gamma.*LR;
 
 eta = eta*2;
-znew = z - eta.*gradL;
-theta = -eta*gradRot;
-delta = -eta.*gradTr;
-wnew = [cos(theta).*w(:,1)+sin(theta).*w(:,2), -sin(theta).*w(:,1)+cos(theta).*w(:,2)] + delta;
+gradLz = gradLCz + lambda.*gradLF;
+znew = z - eta.*gradLz;
+gradLw = gradLCw + gamma.*gradLR;
+wnew = w - eta.*gradLw;
 
-[LFnew,gradLF_new] = grad_LF(y,znew,a,b);
-[LCnew,gradLC_new] = grad_LC(wnew,znew);
-Lnew = LCnew + lambda.*LFnew;
+[LFnew,gradLF_new] = grad_LF_z(y,znew,a,b);
+[LCnew,gradLCz_new] = grad_LC_z(wnew,znew);
+[LRnew,gradLR_new] = grad_LR_w(wnew,x);
+[LCnew,gradLCw_new] = grad_LC_w(wnew,znew);
 
+% k=0;
+Lnew = LCnew + lambda.*LFnew + gamma.*LRnew;
 
 while (Lnew > L && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
 % while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
     eta = eta/2;
-    znew = z - eta.*gradL;
-    theta = -eta*gradRot;
-    delta = -eta.*gradTr;
-    wnew = [cos(theta).*w(:,1)+sin(theta).*w(:,2), -sin(theta).*w(:,1)+cos(theta).*w(:,2)] + delta;
-    
-    [LFnew,gradLF_new] = grad_LF(y,znew,a,b);
-    [LCnew,gradLC_new] = grad_LC(wnew,znew);
-    Lnew = LCnew + lambda.*LFnew;
+    znew = z - eta.*gradLz;
+    wnew = w - eta.*gradLw;
+    [LFnew,gradLF_new] = grad_LF_z(y,znew,a,b);
+    [LCnew,gradLCz_new] = grad_LC_z(wnew,znew);
+    [LRnew,gradLR_new] = grad_LR_w(wnew,x);
+    [LCnew,gradLCw_new] = grad_LC_w(wnew,znew);
+    Lnew = LCnew + lambda.*LFnew + gamma.*LRnew;
 
 end
 
@@ -552,24 +565,22 @@ end
 
 end
 
-
-
 % grad dc wrt z
-function [znew,eta] = grad_dc_z(x,y,z,a,b,lambda,eta,eta_tol)
+function [znew,eta] = grad_dc_z(w,y,z,a,b,lambda,eta,eta_tol)
 
 % lambda: regularization parameter
 % eta: learning rate
 % gradL: gradient of the objective L wrt current z
 % eta_tol: tolerance for (smallest) learning rate
 
-[LF,gradLF] = grad_LF(y,z,a,b);
-[LC,gradLC] = grad_LC(x,z);
+[LF,gradLF] = grad_LF_z(y,z,a,b);
+[LC,gradLC] = grad_LC_z(w,z);
 
 eta = eta*2;
 gradL = gradLC + lambda.*gradLF;
 znew = z - eta.*gradL;
-[LFnew,gradLF_new] = grad_LF(y,znew,a,b);
-[LCnew,gradLC_new] = grad_LC(x,znew);
+[LFnew,gradLF_new] = grad_LF_z(y,znew,a,b);
+[LCnew,gradLC_new] = grad_LC_z(w,znew);
 
 
 % k=0;
@@ -579,8 +590,8 @@ while (Lnew > L && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
 % while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
     eta = eta/2;
     znew = z - eta.*gradL;
-    [LFnew,gradLF_new] = grad_LF(y,znew,a,b);
-    [LCnew,gradLC_new] = grad_LC(x,znew);
+    [LFnew,gradLF_new] = grad_LF_z(y,znew,a,b);
+    [LCnew,gradLC_new] = grad_LC_z(w,znew);
     Lnew = LCnew + lambda.*LFnew;
 
 end
@@ -597,126 +608,99 @@ end
 
 end
 
-% gradient descent for free translation (wrt delta=0)
-function [wnew,eta] = grad_dc_tr(w,z,eta,eta_tol)
 
+% grad dc wrt w
+function [wnew,eta] = grad_dc_w(w,x,z,gamma,eta,eta_tol)
+
+% gamma: regularization parameter
 % eta: learning rate
+% gradL: gradient of the objective L wrt current w
 % eta_tol: tolerance for (smallest) learning rate
 
-eta = eta*2;
-[LC,gradTr] = grad_tr(w,z);
-delta = -eta.*gradTr;
-wnew = w + delta;
+[LR,gradLR] = grad_LR_w(w,x);
+[LC,gradLC] = grad_LC_w(w,z);
 
-[LCnew,gradTr_new] = grad_tr(wnew,z);
-while (LCnew > LC && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
+eta = eta*2;
+gradL = gradLC + gamma.*gradLR;
+wnew = w - eta.*gradL;
+[LRnew,gradLR_new] = grad_LR_w(wnew,x);
+[LCnew,gradLC_new] = grad_LC_w(wnew,z);
+
+
+% k=0;
+Lnew = LCnew + gamma.*LRnew;
+L = LC + gamma.*LR;
+while (Lnew > L && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
 % while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
     eta = eta/2;
-    delta = -eta.*gradTr;
-%     size(delta)
-    wnew = w + delta;
-    [LCnew,gradTr_new] = grad_tr(wnew,z);
+    wnew = w - eta.*gradL;
+    [LRnew,gradLR_new] = grad_LR_w(wnew,x);
+    [LCnew,gradLC_new] = grad_LC_w(wnew,z);
+    Lnew = LCnew + gamma.*LRnew;
 
 end
 
 % gradL_new = gradLC_new + lambda.*gradLF_new;
-if (LCnew > LC) % if no decrease in objective, don't descent
+if (Lnew > L) % if no decrease in objective, don't descent
     wnew = w;
+%     Lnew = L;
 %     LCnew = LC;
-end
+%     LFnew = LF;
+%     gradLC_new = gradLC;
+%     gradLF_new = gradLF;
 
-end
-
-% gradient descent for free rotation and translation (wrt theta,delta=0)
-function [wnew,eta] = grad_dc_rot_tr(w,z,eta,eta_tol)
-
-% eta: learning rate
-% eta_tol: tolerance for (smallest) learning rate
-
-eta = eta*2;
-[LC,gradRot] = grad_rot2d(w,z);
-theta = -eta*gradRot;
-[LC,gradTr] = grad_tr(w,z);
-delta = -eta.*gradTr;
-wnew = [cos(theta).*w(:,1)+sin(theta).*w(:,2), -sin(theta).*w(:,1)+cos(theta).*w(:,2)] + delta;
-% wnew = wnew + delta;
-
-[LCnew,gradRot_new] = grad_rot2d(wnew,z);
-while (LCnew > LC && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
-% while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
-    eta = eta/2;
-    theta = -eta*gradRot;
-    delta = -eta.*gradTr;
-%     size(delta)
-    wnew = [cos(theta).*w(:,1)+sin(theta).*w(:,2), -sin(theta).*w(:,1)+cos(theta).*w(:,2)] + delta;
-%     wnew = wnew + delta;
-    [LCnew,gradRot_new] = grad_rot2d(wnew,z);
-
-end
-
-% gradL_new = gradLC_new + lambda.*gradLF_new;
-if (LCnew > LC) % if no decrease in objective, don't descent
-    wnew = w;
-%     LCnew = LC;
-end
-
-end
-
-% gradient descent for free rotation (wrt theta=0)
-function [wnew,eta] = grad_dc_rot2d(w,z,eta,eta_tol)
-
-% eta: learning rate
-% eta_tol: tolerance for (smallest) learning rate
-
-eta = eta*2;
-[LC,gradRot] = grad_rot2d(w,z);
-theta = -eta*gradRot;
-wnew = [cos(theta).*w(:,1)+sin(theta).*w(:,2), -sin(theta).*w(:,1)+cos(theta).*w(:,2)];
-
-[LCnew,gradRot_new] = grad_rot2d(wnew,z);
-while (LCnew > LC && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
-% while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
-    eta = eta/2;
-    theta = -eta*gradRot;
-%     size(delta)
-    wnew = [cos(theta).*w(:,1)+sin(theta).*w(:,2), -sin(theta).*w(:,1)+cos(theta).*w(:,2)];
-    [LCnew,gradRot_new] = grad_rot2d(wnew,z);
-
-end
-
-% gradL_new = gradLC_new + lambda.*gradLF_new;
-if (LCnew > LC) % if no decrease in objective, don't descent
-    wnew = w;
-%     LCnew = LC;
 % else
+%     eta.*gradL
 %     eta
+    
 end
 
 end
 
 
-
-%% implicit gradient descent
-
-% implicit gradient descent for free translation (wrt delta=0)
-function [wnew,eta] = imp_grad_dc_tr(w,z,eta,eta_tol)
+% gradient descent LR wrt w
+function [wnew,eta] = grad_dc_LR_w(w,x,gamma,eta,eta_tol)
 
 % eta: learning rate
 % eta_tol: tolerance for (smallest) learning rate
 
 eta = eta*2;
-[LC,gradTr] = grad_tr(w,z);
-delta = -eta/(1+eta).*gradTr;
-wnew = w + delta;
+[LR,gradLR] = grad_LR_w(w,x);
+wnew = w - eta.*gamma*gradLR;
 
-[LCnew,gradTr_new] = grad_tr(wnew,z);
+[LRnew,gradLR_new] = grad_LR_w(wnew,x);
+while (LRnew > LR && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
+% while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
+    eta = eta/2;
+    wnew = w - eta.*gamma*gradLR;
+    [LRnew,gradLR_new] = grad_LR_w(wnew,x);
+
+end
+
+% gradL_new = gradLC_new + lambda.*gradLF_new;
+if (LRnew > LR) % if no decrease in objective, don't descent
+    wnew = w;
+%     LCnew = LC;
+end
+
+end
+
+% gradient descent LC wrt w
+function [wnew,eta] = grad_dc_LC_w(w,z,eta,eta_tol)
+
+% eta: learning rate
+% eta_tol: tolerance for (smallest) learning rate
+
+eta = eta*2;
+[LC,gradLC] = grad_LC_w(w,z);
+wnew = w - eta.*gradLC;
+
+[LCnew,gradLC_new] = grad_LC_w(wnew,z);
 while (LCnew > LC && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
 % while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
     eta = eta/2;
-    delta = -eta/(1+eta).*gradTr;
-%     size(delta)
-    wnew = w + delta;
-    [LCnew,gradTr_new] = grad_tr(wnew,z);
+    wnew = w - eta.*gradLC;
+    [LCnew,gradLC_new] = grad_LC_w(wnew,z);
 
 end
 
@@ -724,42 +708,6 @@ end
 if (LCnew > LC) % if no decrease in objective, don't descent
     wnew = w;
 %     LCnew = LC;
-end
-
-end
-
-
-% implicit gradient descent for free rotation (wrt theta=0)
-function [wnew,eta] = imp_grad_dc_rot2d(w,z,eta,eta_tol)
-
-% eta: learning rate
-% eta_tol: tolerance for (smallest) learning rate
-
-if (eta<1e32)
-eta = eta*2;
-end
-[LC,gradRot] = grad_rot2d(w,z);
-hessRot = hess_rot2d(w,z);
-theta = -eta*gradRot/(1+eta*hessRot);
-wnew = [cos(theta).*w(:,1)+sin(theta).*w(:,2), -sin(theta).*w(:,1)+cos(theta).*w(:,2)];
-
-[LCnew,gradRot_new] = grad_rot2d(wnew,z);
-while (LCnew > LC && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
-% while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
-    eta = eta/2;
-    theta = -eta*gradRot/(1+eta*hessRot);
-%     size(delta)
-    wnew = [cos(theta).*w(:,1)+sin(theta).*w(:,2), -sin(theta).*w(:,1)+cos(theta).*w(:,2)];
-    [LCnew,gradRot_new] = grad_rot2d(wnew,z);
-
-end
-
-% gradL_new = gradLC_new + lambda.*gradLF_new;
-if (LCnew > LC) % if no decrease in objective, don't descent
-    wnew = w;
-%     LCnew = LC;
-% else
-%     eta/(1+eta*hessRot)
 end
 
 end
