@@ -50,8 +50,7 @@ b = a;
 afinal = bw(y,1); % final bw for y using rule of thumb
 da = (a-afinal)/(gamma); % gradual decrease of a (if not using rule of thumb to update)
 
-zc = z;
-[LF,gradLF] = grad_LF(y,z,zc,a,b);
+[LF,gradLF] = grad_LF(y,z,a,b);
 [LC,gradLC] = grad_LC(x,z);
 % L = LC + lambda.*LF;
 gradL = gradLC + lambda.*gradLF;
@@ -122,8 +121,7 @@ while (i<gamma) %&& norm(gradL)>tol)
     % gradient descent with current set of bw and lambda
     k=0;
     while (k<INNER_STEP && norm(gradL)>tol) % inner loop
-        [z,zc,eta,gradLC,gradLF,LC,LF] = grad_dc(x,y,z,zc,a,b,lambda,eta,gradLC,gradLF,LC,LF,eta_tol);
-%         zc = z;
+        [z,eta,gradLC,gradLF,LC,LF] = grad_dc(x,y,z,a,b,lambda,eta,gradLC,gradLF,LC,LF,eta_tol);
         k = k+1;
     end
     
@@ -158,7 +156,7 @@ while (i<gamma) %&& norm(gradL)>tol)
 
     % new function and gradient values
 %     if (i<=gamma)
-        [LF,gradLF] = grad_LF(y,z,zc,a,b);
+        [LF,gradLF] = grad_LF(y,z,a,b);
         [LC,gradLC] = grad_LC(x,z);
 %         L = LC + lambda.*LF;
         gradL = gradLC + lambda.*gradLF;
@@ -205,8 +203,7 @@ while (i<MAX_STEP) %|| norm(gradL)>tol) % extra steps for final set of lambda an
      % gradient descent with current set of bw and lambda   
     k=0;
     while (k<INNER_STEP && norm(gradL)>tol) % inner loop
-        [z,zc,eta,gradLC,gradLF,LC,LF] = grad_dc(x,y,z,zc,a,b,lambda,eta,gradLC,gradLF,LC,LF,eta_tol);
-%         zc = z;
+        [z,eta,gradLC,gradLF,LC,LF] = grad_dc(x,y,z,a,b,lambda,eta,gradLC,gradLF,LC,LF,eta_tol);
         k = k+1;
     end
     gradL = gradLC + lambda.*gradLF;
@@ -462,7 +459,7 @@ end
 % bw1 = @(x,N)(0.9*min(std(x),iqr(x)/1.34)*(N^(-1/5)));
 
 %% Gradient Descent (one step)
-function [znew,cnew,eta,gradLC_new,gradLF_new,LCnew,LFnew] = grad_dc(x,y,z,c,a,b,lambda,eta,gradLC,gradLF,LC,LF,eta_tol)
+function [znew,eta,gradLC_new,gradLF_new,LCnew,LFnew] = grad_dc(x,y,z,a,b,lambda,eta,gradLC,gradLF,LC,LF,eta_tol)
 
 % lambda: regularization parameter
 % eta: learning rate
@@ -472,8 +469,7 @@ function [znew,cnew,eta,gradLC_new,gradLF_new,LCnew,LFnew] = grad_dc(x,y,z,c,a,b
 eta = eta*2;
 gradL = gradLC + lambda.*gradLF;
 znew = z - eta.*gradL;
-cnew = znew;
-[LFnew,gradLF_new] = grad_LF(y,znew,cnew,a,b);
+[LFnew,gradLF_new] = grad_LF(y,znew,a,b);
 [LCnew,gradLC_new] = grad_LC(x,znew);
 % gradL_new = gradLC_new + lambda.*gradLF_new;
 % [gradL_new] = grad_LC(x,znew) + lambda.*grad_LF(y,znew,a,b);
@@ -482,22 +478,14 @@ cnew = znew;
 
 % k=0;
 Lnew = LCnew + lambda.*LFnew;
-
-[LF,gradLF] = grad_LF(y,z,cnew,a,b);
-% [LCnew,gradLC_new] = grad_LC(x,znew);
 L = LC + lambda.*LF;
 while (Lnew > L && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
 % while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
     eta = eta/2;
     znew = z - eta.*gradL;
-    cnew = znew;
-    [LFnew,gradLF_new] = grad_LF(y,znew,cnew,a,b);
+    [LFnew,gradLF_new] = grad_LF(y,znew,a,b);
     [LCnew,gradLC_new] = grad_LC(x,znew);
     Lnew = LCnew + lambda.*LFnew;
-    
-    [LF,gradLF] = grad_LF(y,z,cnew,a,b);
-    % [LCnew,gradLC_new] = grad_LC(x,znew);
-    L = LC + lambda.*LF;
 %     gradL_new = gradLC_new + lambda.*gradLF_new;
 %     gradL_new = grad_LC(x,znew) + lambda.*grad_LF(y,znew,a,b);
 %     n2 = norm(gradL_new);
@@ -510,7 +498,6 @@ end
 % gradL_new = gradLC_new + lambda.*gradLF_new;
 if (Lnew > L) % if no decrease in objective, don't descent
     znew = z;
-    cnew = c;
 %     Lnew = L;
     LCnew = LC;
     LFnew = LF;

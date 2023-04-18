@@ -69,7 +69,8 @@ afinal = bw(y,1); % final bw for y using rule of thumb
 da = (a-afinal)/(K); % gradual decrease of a (if not using rule of thumb to update)
 
 % initial gradients and objective values
-[LF,gradLF] = grad_LF(y,z,a,b);
+zc = z;
+[LF,gradLF] = grad_LF(y,z,zc,a,b);
 [LC,gradLC] = grad_LC(w,z);
 % L = LC + lambda.*LF;
 gradL = gradLC + lambda.*gradLF;
@@ -118,7 +119,7 @@ while (i<K) %&& norm(gradL)>tol)
     k=0;
     while (k<INNER_STEP && norm(gradL)>tol) % inner loop
         % 1) grad dc wrt z
-        [z,eta(i+2)] = grad_dc_z(w,y,z,a,b,lambda,eta(i+1),eta_tol);
+        [z,zc,eta(i+2)] = grad_dc_z(w,y,z,zc,a,b,lambda,eta(i+1),eta_tol);
 %         [z,w,eta(i+2)] = grad_dc(w,y,z,a,b,lambda,eta(i+1),eta_tol);
         
         % 2) grad dc wrt w
@@ -138,7 +139,7 @@ while (i<K) %&& norm(gradL)>tol)
     lambda = lambda+dl; % increase lambda
 
     % new function and gradient values
-    [LF,gradLF] = grad_LF(y,z,a,b);
+    [LF,gradLF] = grad_LF(y,z,zc,a,b);
     [LC,gradLC] = grad_LC(w,z);
 %     L = LC + lambda.*LF;
     gradL = gradLC + lambda.*gradLF;
@@ -184,7 +185,7 @@ while (i<MAX_STEP) %|| norm(gradL)>tol) % extra steps for final set of lambda an
     k=0;
     while (k<INNER_STEP && norm(gradL)>tol) % inner loop
         % 1) grad dc wrt z
-        [z,eta(i+2)] = grad_dc_z(w,y,z,a,b,lambda,eta(i+1),eta_tol);
+        [z,zc,eta(i+2)] = grad_dc_z(w,y,z,zc,a,b,lambda,eta(i+1),eta_tol);
 %         [z,w,eta(i+2)] = grad_dc(w,y,z,a,b,lambda,eta(i+1),eta_tol);
         
         % 2) grad dc wrt w
@@ -197,7 +198,7 @@ while (i<MAX_STEP) %|| norm(gradL)>tol) % extra steps for final set of lambda an
     end
     
     % new function and gradient values
-    [LF,gradLF] = grad_LF(y,z,a,b);
+    [LF,gradLF] = grad_LF(y,z,zc,a,b);
     [LC,gradLC] = grad_LC(w,z);
 %     L = LC + lambda.*LF;
     gradL = gradLC + lambda.*gradLF;
@@ -373,7 +374,7 @@ Fy = Fy';
 end
 
 % compute L_F and gradient for L_F (without lambda)
-function [res1,res2] = grad_LF(y,z,a,b)
+function [res1,res2] = grad_LF(y,z,c,a,b)
 
 N = length(z(:,1));
 M = length(y(:,1));
@@ -388,9 +389,9 @@ tmp3 = zeros(d,M,N);
 tmp4 = zeros(d,M,M);
 
 for l=1:d
-     tmp1(l,:,:) = (z(:,l)' - z(:,l))./a(l);
+     tmp1(l,:,:) = (c(:,l)' - z(:,l))./a(l);
      tmp2(l,:,:) = (y(:,l)' - z(:,l))./b(l);
-     tmp3(l,:,:) = (z(:,l)' - y(:,l))./a(l);
+     tmp3(l,:,:) = (c(:,l)' - y(:,l))./a(l);
      tmp4(l,:,:) = (y(:,l)' - y(:,l))./b(l);
 end
 
@@ -555,39 +556,49 @@ end
 
 
 % grad dc wrt z
-function [znew,eta] = grad_dc_z(x,y,z,a,b,lambda,eta,eta_tol)
+function [znew,cnew,eta] = grad_dc_z(x,y,z,c,a,b,lambda,eta,eta_tol)
 
 % lambda: regularization parameter
 % eta: learning rate
 % gradL: gradient of the objective L wrt current z
 % eta_tol: tolerance for (smallest) learning rate
 
-[LF,gradLF] = grad_LF(y,z,a,b);
+[LF,gradLF] = grad_LF(y,z,c,a,b);
 [LC,gradLC] = grad_LC(x,z);
 
 eta = eta*2;
 gradL = gradLC + lambda.*gradLF;
 znew = z - eta.*gradL;
-[LFnew,gradLF_new] = grad_LF(y,znew,a,b);
+cnew = znew;
+[LFnew,gradLF_new] = grad_LF(y,znew,cnew,a,b);
 [LCnew,gradLC_new] = grad_LC(x,znew);
 
 
 % k=0;
 Lnew = LCnew + lambda.*LFnew;
+
+[LF,gradLF] = grad_LF(y,z,cnew,a,b);
+% [LC,gradLC] = grad_LC(x,z);
 L = LC + lambda.*LF;
 while (Lnew > L && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
 % while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
     eta = eta/2;
     znew = z - eta.*gradL;
-    [LFnew,gradLF_new] = grad_LF(y,znew,a,b);
+    cnew = znew;
+    [LFnew,gradLF_new] = grad_LF(y,znew,cnew,a,b);
     [LCnew,gradLC_new] = grad_LC(x,znew);
     Lnew = LCnew + lambda.*LFnew;
+    
+    [LF,gradLF] = grad_LF(y,z,cnew,a,b);
+    % [LC,gradLC] = grad_LC(x,z);
+    L = LC + lambda.*LF;
 
 end
 
 % gradL_new = gradLC_new + lambda.*gradLF_new;
 if (Lnew > L) % if no decrease in objective, don't descent
     znew = z;
+    cnew = c;
 %     Lnew = L;
 %     LCnew = LC;
 %     LFnew = LF;
@@ -699,7 +710,8 @@ end
 %% implicit gradient descent
 
 % implicit gradient descent for free translation (wrt delta=0)
-function [wnew,eta] = imp_grad_dc_tr(w,z,eta,eta_tol)
+function [wnew,eta] = imp_grad_dc_tr(w,z,
+zeta,eta_tol)
 
 % eta: learning rate
 % eta_tol: tolerance for (smallest) learning rate
