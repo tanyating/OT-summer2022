@@ -17,23 +17,34 @@ end
 
 if (d==2)
 %     x = [1 1] + rand(N,d); % samples drawn from rho (N-by-d matrix)
-%     y = [5 5] + [2 2].*rand(M,d); % samples drawn from mu (M-by-d matrix)
+%     y = [5 5] + [1 1].*rand(M,d); % samples drawn from mu (M-by-d matrix)
     x = mvnrnd([1;1],3.*eye(2),N); % samples drawn from rho (N-by-d matrix)
-    y = mvnrnd([10;20],eye(2),M); % samples drawn from mu (M-by-d matrix)
+    y = mvnrnd([8;1],eye(2),M); % samples drawn from mu (M-by-d matrix)
+%     x = X1./(28*28);
+%     y = X2./(28*28);
 end
 
+% if (d==3)
+%     x = X1;
+%     y = X2;
+% end
+
 % normalize x and y
-xy = [x;y];
-xy = xy./std(xy);
-x = xy(1:N,:);
-y = xy(N+1:end,:);
+% xy = [x;y];
+% xy = xy./std(xy);
+% x = xy(1:N,:);
+% y = xy(N+1:end,:);
 
 z = x; % start the transport with the original samples
 
-eta = 0.1; % initial (small) learning rate
+
+
 gamma = 300; % a threshold number of steps;
 MAX_STEP = gamma + 300; % maximum steps of grad dc
 INNER_STEP = 1; % inner number of grad dc for each set of lambda and bw
+
+eta = zeros(MAX_STEP+1,1);
+eta(1) = 0.1; % initial (small) learning rate
 
 lambda = 5e3; % intial regularization parameter 
 lambda_final = 5e4; % final regularization parameter (large)
@@ -81,10 +92,10 @@ if (d==2) % visualize test function
     title(sprintf("F evaluated at step 0 (with bandwidth multiplier %d)",c));
 end
 
-tol = 1e-2; % grad norm tolerance
+tol = 1e-4; % grad norm tolerance
 eta_tol = 1e-32; % smallest learning rate
 i = 0;
-plotstep = MAX_STEP; 
+plotstep = 10;%MAX_STEP; 
 figure();
 while (i<gamma) %&& norm(gradL)>tol)
     % plot distribution at some steps
@@ -122,7 +133,7 @@ while (i<gamma) %&& norm(gradL)>tol)
     % gradient descent with current set of bw and lambda
     k=0;
     while (k<INNER_STEP && norm(gradL)>tol) % inner loop
-        [z,zc,eta,gradLC,gradLF,LC,LF] = grad_dc(x,y,z,zc,a,b,lambda,eta,gradLC,gradLF,LC,LF,eta_tol);
+        [z,zc,eta(i+2),gradLC,gradLF,LC,LF] = grad_dc(x,y,z,zc,a,b,lambda,eta(i+1),gradLC,gradLF,LC,LF,eta_tol);
 %         zc = z;
         k = k+1;
     end
@@ -205,7 +216,7 @@ while (i<MAX_STEP) %|| norm(gradL)>tol) % extra steps for final set of lambda an
      % gradient descent with current set of bw and lambda   
     k=0;
     while (k<INNER_STEP && norm(gradL)>tol) % inner loop
-        [z,zc,eta,gradLC,gradLF,LC,LF] = grad_dc(x,y,z,zc,a,b,lambda,eta,gradLC,gradLF,LC,LF,eta_tol);
+        [z,zc,eta(i+2),gradLC,gradLF,LC,LF] = grad_dc(x,y,z,zc,a,b,lambda,eta(i+1),gradLC,gradLF,LC,LF,eta_tol);
 %         zc = z;
         k = k+1;
     end
@@ -239,6 +250,17 @@ if (d==2)
     legend('x','y','z');
     title(sprintf("Distribution of x, y, and z at final step %d (c = %d)",i,c));
 end
+
+% plot learning rates
+figure();
+plot(0:MAX_STEP,eta,'r.-'); hold on;
+% plot(0:MAX_STEP,eta2,'b.', 'Markersize', 3);
+% plot(0:MAX_STEP,eta3,'g.', 'Markersize', 3);
+xlabel('number of steps');
+ylabel('\eta');
+% legend('grad dc wrt z','free translation','free rotation');
+% title('learning rates');
+title('learning rates for grad dc wrt z');
 
 %---------------------------------------------
 
@@ -516,6 +538,155 @@ if (Lnew > L) % if no decrease in objective, don't descent
     LFnew = LF;
     gradLC_new = gradLC;
     gradLF_new = gradLF;
+end
+
+end
+
+% compute hessian wrt z
+function [res] = hess_L_z(y,z,c,a,b,lambda)
+
+N = length(z(:,1));
+M = length(y(:,1));
+d = length(z(1,:));
+
+tmp1 = zeros(d,N,N);
+tmp2 = zeros(d,N,M);
+% tmp3 = zeros(d,M,N);
+% tmp4 = zeros(d,M,M);
+
+parfor l=1:d
+     tmp1(l,:,:) = (c(:,l)' - z(:,l))./a(l);
+     tmp2(l,:,:) = (y(:,l)' - z(:,l))./b(l);
+%      tmp3(l,:,:) = (c(:,l)' - y(:,l))./a(l);
+%      tmp4(l,:,:) = (y(:,l)' - y(:,l))./b(l);
+end
+
+tmp3 = exp(-1/2.*sum(tmp1.^2,1));
+tmp4 = exp(-1/2.*sum(tmp2.^2,1));
+
+
+% normalizing constants
+c1 = 1/(N^2)/(prod(a)*(sqrt(2*pi))^d);
+c2 = 1/(M*N)/(prod(b)*(sqrt(2*pi))^d);
+c3 = 1/(M*N)/(prod(a)*(sqrt(2*pi))^d);
+c4 = 1/(M^2)/(prod(b)*(sqrt(2*pi))^d);
+
+tmp5 = sum(tmp3,3).*c1;
+tmp6 = sum(tmp4,3).*c2;
+
+res = zeros(N*d);
+% size(tmp3)
+
+for i=1:N
+    
+    b1 = (i-1)*d+1;
+    b2 = i*d;
+    
+    diag_val = 1/N + lambda.* (-tmp5(i)./(a) + tmp6(i)./(b));
+    res(b1:b2,b1:b2) = diag(diag_val);
+    
+    for j=1:N
+%         i,j
+%         tmp3(i,j)
+        res(b1:b2,b1:b2) = res(b1:b2,b1:b2) + lambda*c1.* kron(tmp1(:,i,j)',tmp1(:,i,j)).*tmp3(1,i,j);
+        res(b1:b2,b1:b2) = res(b1:b2,b1:b2) - lambda*c2.* kron(tmp2(:,i,j)',tmp2(:,i,j)).*tmp4(1,i,j);
+    end
+    
+end
+
+end
+
+
+
+function [x] = flat(x)
+
+x = reshape(x',[],1);
+
+end
+
+function [x] = remat(x,N,d)
+
+x = reshape(x,d,N)';
+
+end
+
+function [znew] = pred(x,y,z,c,a,b,lambda,eta)
+
+N = length(x(:,1));
+d = length(x(1,:));
+zflat = flat(z);
+
+
+% predictor
+[LF,gradLF] = grad_LF(y,z,c,a,b);
+[LC,gradLC] = grad_LC(x,z);
+gradL = gradLC + lambda.*gradLF;
+G = flat(gradL);
+A = eye(N*d) + eta.*hess_L_z(y,z,c,a,b,lambda);
+zstflat = zflat - eta.*(A\G);
+zst = remat(zstflat,N,d);
+
+% estimator
+[LF,gradLF] = grad_LF(y,z,zst,a,b);
+[LC,gradLC] = grad_LC(x,z);
+gradL = gradLC + lambda.*gradLF;
+G = flat(gradL);
+A = eye(N*d) + eta.*hess_L_z(y,z,zst,a,b,lambda);
+znewflat = zflat - eta.*(A\G);
+
+znew = remat(znewflat,N,d);
+
+end
+
+% implicit grad dc wrt z
+function [znew,cnew,eta] = imp_grad_dc_z(x,y,z,c,a,b,lambda,eta,eta_tol)
+
+N = length(x(:,1));
+d = length(x(1,:));
+
+% lambda: regularization parameter
+% eta: learning rate
+% gradL: gradient of the objective L wrt current z
+% eta_tol: tolerance for (smallest) learning rate
+
+
+eta = eta*2;
+znew = pred(x,y,z,c,a,b,lambda,eta);
+cnew = znew;
+[LFnew,gradLF_new] = grad_LF(y,znew,cnew,a,b);
+[LCnew,gradLC_new] = grad_LC(x,znew);
+
+
+% k=0;
+Lnew = LCnew + lambda.*LFnew;
+
+[LF,gradLF] = grad_LF(y,z,cnew,a,b);
+[LC,gradLC] = grad_LC(x,z);
+L = LC + lambda.*LF;
+while (Lnew > L && eta>eta_tol) %&& (abs(L-Lnew)>0.1))
+% while ((n2 >= n1) && (abs(n1-n2)>0.1)) % find reasonable learning rate (when the gradient is closer to 0)
+    eta = eta/2;
+    znew = pred(x,y,z,c,a,b,lambda,eta);
+    cnew = znew;
+    [LFnew,gradLF_new] = grad_LF(y,znew,cnew,a,b);
+    [LCnew,gradLC_new] = grad_LC(x,znew);
+    Lnew = LCnew + lambda.*LFnew;
+    
+    [LF,gradLF] = grad_LF(y,z,cnew,a,b);
+    % [LC,gradLC] = grad_LC(x,z);
+    L = LC + lambda.*LF;
+
+end
+
+% gradL_new = gradLC_new + lambda.*gradLF_new;
+if (Lnew > L) % if no decrease in objective, don't descent
+    znew = z;
+    cnew = c;
+%     Lnew = L;
+%     LCnew = LC;
+%     LFnew = LF;
+%     gradLC_new = gradLC;
+%     gradLF_new = gradLF;
 end
 
 end
